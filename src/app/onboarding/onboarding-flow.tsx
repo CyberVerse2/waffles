@@ -11,7 +11,6 @@ import {
   type ReactNode,
 } from "react";
 import { useSession } from "next-auth/react";
-import { ASSETS, Confetti, PixelImg } from "../shared";
 import {
   onboardStore,
   type OnboardStep,
@@ -22,16 +21,15 @@ import { useWorldSignIn } from "./use-world-auth";
 import { useVerifyHuman, type VerifyLevel } from "./use-verify";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Hero question for the onboarding sample round.
-// Hand-picked: a satisfying "huh, never noticed" moment with a near-miss
-// distractor (FIVE has 4 letters but its value is 5). Broadly knowable, not
-// culturally narrow. See open question #1 in the design brief.
+// Hero question — hand-picked. A satisfying "huh, never noticed" with a
+// near-miss distractor (FIVE has 4 letters but value is 5). Broadly knowable,
+// not culturally narrow. See open question #1 in the design brief.
 // ─────────────────────────────────────────────────────────────────────────────
 const HERO_QUESTION = {
   prompt: "Only one number is spelled with the same number of letters as its value. Which one?",
-  answers: ["THREE", "FOUR", "FIVE", "SEVEN"],
+  answers: ["Three", "Four", "Five", "Seven"],
   correct: 1,
-  reveal: "FOUR — F·O·U·R. The only number that matches.",
+  reveal: "Four — F·O·U·R. The only one that matches.",
 } as const;
 
 const SAMPLE_TIMER_SEC = 10;
@@ -43,11 +41,8 @@ const VERIFY_XP_REWARD = 100;
 type CurrentStep = "hook" | "countdown" | "sample" | "feedback" | "result" | "verify";
 
 type OnboardingControls = {
-  // Re-launch the sample-then-result flow (for users who skipped the teaser)
   relaunchSample: () => void;
-  // Re-launch the verify step (for users who dismissed it)
   relaunchVerify: () => void;
-  // True once the sample round was played (for Home mission card)
   sampleComplete: boolean;
   verifyStatus: VerifyStatus | null;
 };
@@ -57,8 +52,6 @@ const OnboardingContext = createContext<OnboardingControls | null>(null);
 export function useOnboardingControls(): OnboardingControls {
   const ctx = useContext(OnboardingContext);
   if (!ctx) {
-    // Not yet mounted — return a no-op fallback so consumers don't crash if
-    // they render before OnboardingFlow does (shouldn't happen, but defensive).
     return {
       relaunchSample: () => {},
       relaunchVerify: () => {},
@@ -73,23 +66,19 @@ export function OnboardingFlow({ children }: { children: ReactNode }) {
   const { data: session, status: sessionStatus } = useSession();
   const isAuthed = Boolean(session?.user?.address);
 
-  // Hydration
   const [hydrated, setHydrated] = useState(false);
   const [storedStep, setStoredStep] = useState<OnboardStep | null>(null);
   const [sampleResult, setSampleResult] = useState<SampleResult | null>(null);
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus | null>(null);
 
-  // UI state
   const [currentStep, setCurrentStep] = useState<CurrentStep>("hook");
   const [skipSheetOpen, setSkipSheetOpen] = useState(false);
   const [reLaunchActive, setReLaunchActive] = useState<"sample" | "verify" | null>(null);
 
-  // Auth + verify hooks (used inside steps 3 and 4)
   const { signIn, isSigningIn, error: authError, isInstalled, clearError } = useWorldSignIn();
   const { check: checkVerify, isChecking, error: verifyError } = useVerifyHuman();
   const [verifySuccess, setVerifySuccess] = useState<VerifyLevel | null>(null);
 
-  // ── Hydrate from storage on mount ──────────────────────────────────────────
   useEffect(() => {
     setStoredStep(onboardStore.getStep());
     setSampleResult(onboardStore.getSample());
@@ -97,7 +86,6 @@ export function OnboardingFlow({ children }: { children: ReactNode }) {
     setHydrated(true);
   }, []);
 
-  // ── Auto-mark onboarding complete for legacy authed users with no storage ─
   useEffect(() => {
     if (!hydrated) return;
     if (isAuthed && storedStep === null) {
@@ -106,18 +94,15 @@ export function OnboardingFlow({ children }: { children: ReactNode }) {
     }
   }, [hydrated, isAuthed, storedStep]);
 
-  // ── If session arrives mid-flow (after step 3 sign-in), advance to verify ─
   useEffect(() => {
     if (!hydrated) return;
     if (currentStep === "result" && isAuthed) {
-      // Sign-in just landed. Mark onboarding complete and move to step 4.
       onboardStore.setStep("complete");
       setStoredStep("complete");
       setCurrentStep("verify");
     }
   }, [isAuthed, currentStep, hydrated]);
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
   const startSample = useCallback(() => {
     onboardStore.setStep("sample");
     setStoredStep("sample");
@@ -138,12 +123,8 @@ export function OnboardingFlow({ children }: { children: ReactNode }) {
 
   const handleSignIn = useCallback(async () => {
     const result = await signIn();
-    if (result.ok) {
-      // The useEffect above watches `isAuthed` and will move us to "verify".
-      // If we're in re-launch mode, finishing here just closes the flow.
-      if (reLaunchActive === "sample") {
-        setReLaunchActive(null);
-      }
+    if (result.ok && reLaunchActive === "sample") {
+      setReLaunchActive(null);
     }
   }, [signIn, reLaunchActive]);
 
@@ -160,10 +141,7 @@ export function OnboardingFlow({ children }: { children: ReactNode }) {
       onboardStore.setVerify("verified");
       setVerifyStatus("verified");
       setVerifySuccess(result.level);
-      // Brief celebration, then exit.
-      setTimeout(() => {
-        setReLaunchActive(null);
-      }, 1600);
+      setTimeout(() => setReLaunchActive(null), 1800);
     }
   }, [checkVerify]);
 
@@ -198,30 +176,20 @@ export function OnboardingFlow({ children }: { children: ReactNode }) {
     [relaunchSample, relaunchVerify, sampleResult, verifyStatus]
   );
 
-  // ── What to render ────────────────────────────────────────────────────────
   const showOnboarding = (() => {
     if (!hydrated) return false;
     if (sessionStatus === "loading") return false;
     if (reLaunchActive) return true;
-
-    if (!isAuthed) {
-      // Pre-auth: show flow unless they've explicitly skipped it.
-      return storedStep !== "skipped" && storedStep !== "complete";
-    }
-    // Post-auth: show verify step until verifyStatus is set.
+    if (!isAuthed) return storedStep !== "skipped" && storedStep !== "complete";
     return verifyStatus === null;
   })();
 
   if (!showOnboarding) {
     return (
-      <OnboardingContext.Provider value={controls}>
-        {children}
-      </OnboardingContext.Provider>
+      <OnboardingContext.Provider value={controls}>{children}</OnboardingContext.Provider>
     );
   }
 
-  // Decide which step component to render. For post-auth users without a
-  // saved currentStep transition, jump straight to "verify".
   const effectiveStep: CurrentStep = (() => {
     if (reLaunchActive === "verify") return "verify";
     if (isAuthed && currentStep !== "verify") return "verify";
@@ -230,8 +198,7 @@ export function OnboardingFlow({ children }: { children: ReactNode }) {
 
   return (
     <OnboardingContext.Provider value={controls}>
-      <div className="onboard-frame waffles-v2-frame">
-        <div className="onboard-bg" />
+      <div className="onboard-frame">
         {effectiveStep === "hook" && (
           <HookStep
             onPlay={startSample}
@@ -243,10 +210,7 @@ export function OnboardingFlow({ children }: { children: ReactNode }) {
           <CountdownStep onDone={() => setCurrentStep("sample")} />
         )}
         {effectiveStep === "sample" && (
-          <SampleStep
-            onAnswered={onSampleAnswered}
-            onSkip={() => setSkipSheetOpen(true)}
-          />
+          <SampleStep onAnswered={onSampleAnswered} onSkip={() => setSkipSheetOpen(true)} />
         )}
         {effectiveStep === "feedback" && sampleResult && (
           <FeedbackStep result={sampleResult} onDone={advanceToResult} />
@@ -268,15 +232,12 @@ export function OnboardingFlow({ children }: { children: ReactNode }) {
             success={verifySuccess}
             onVerify={handleVerify}
             onDismiss={() => setSkipSheetOpen(true)}
-            sampleEarnedXp={sampleResult !== null}
           />
         )}
         {skipSheetOpen && (
           <SkipSheet
             mode={effectiveStep === "verify" ? "verify" : "onboarding"}
-            onConfirm={
-              effectiveStep === "verify" ? handleVerifyDismiss : handleSkipFromPreAuth
-            }
+            onConfirm={effectiveStep === "verify" ? handleVerifyDismiss : handleSkipFromPreAuth}
             onClose={() => setSkipSheetOpen(false)}
           />
         )}
@@ -286,7 +247,7 @@ export function OnboardingFlow({ children }: { children: ReactNode }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Step 1: Hook — pre-auth hype card
+// Step 1: Hook — editorial paper layout
 // ─────────────────────────────────────────────────────────────────────────────
 function HookStep({
   onPlay,
@@ -297,58 +258,43 @@ function HookStep({
   onSkip: () => void;
   isReLaunch: boolean;
 }) {
-  const playerCount = useTickingNumber(2418, 2520, 4000);
-  const tournamentClock = useCountdownClock();
+  const playerCount = useTickingNumber(2418, 2520, 4500);
+  const clock = useCountdownClock();
 
   return (
     <div className="onboard-step onboard-step-hook">
-      <SkipButton onClick={onSkip} />
+      <Masthead live onSkip={onSkip} />
+      <hr className="onboard-rule" />
 
-      <div className="onboard-watermark" aria-hidden="true">WAFFLES</div>
+      <h1 className="onboard-hook-headline">
+        {isReLaunch ? <>Welcome back.<br /><em>One round.</em></> : <>One question.<br /><em>Ten seconds.</em></>}
+      </h1>
 
-      <div className="onboard-hook-body">
-        <div className="onboard-chip-row">
-          <span className="onboard-live-chip">
-            <span className="onboard-live-dot" />
-            LIVE NOW
-          </span>
-          <span className="onboard-counter">
-            <span className="onboard-counter-num">{playerCount.toLocaleString()}</span>
-            <span className="onboard-counter-label">PLAYING</span>
-          </span>
+      <p className="onboard-hook-lede">
+        {isReLaunch
+          ? "Same drill — pick the answer, see what happens."
+          : "We don't believe in long onboarding. Take a round, see if it lands."}
+      </p>
+
+      <hr className="onboard-rule-dotted" />
+
+      <div className="onboard-hook-meta">
+        <div>
+          <span>Playing now</span>
+          <strong>{playerCount.toLocaleString()}</strong>
         </div>
-
-        <h1 className="onboard-headline">
-          REAL TRIVIA.
-          <br />
-          REAL PRIZES.
-          <br />
-          <span className="onboard-headline-accent">RIGHT NOW.</span>
-        </h1>
-
-        <div className="onboard-tournament-card">
-          <div className="onboard-tournament-label">TOP OF THE HOUR</div>
-          <div className="onboard-tournament-clock" aria-live="off">
-            <ClockDigit value={tournamentClock.minutes} label="MIN" />
-            <span className="onboard-clock-sep">:</span>
-            <ClockDigit value={tournamentClock.seconds} label="SEC" />
-          </div>
-          <div className="onboard-tournament-meta">12 questions · 90s · prize pool</div>
-        </div>
-
-        <div className="onboard-mascot-row">
-          <PixelImg src={ASSETS.wally} size={88} alt="" />
-          <div className="onboard-bubble">
-            {isReLaunch
-              ? "Good to see you back. Same drill — one question."
-              : "I'll show you. One question, ten seconds. Ready?"}
-          </div>
+        <div>
+          <span>Next round in</span>
+          <strong>{clock.minutes}:{clock.seconds}</strong>
         </div>
       </div>
 
+      <RoundStamp />
+
       <div className="onboard-cta-bar">
-        <button type="button" className="onboard-cta onboard-cta-primary" onClick={onPlay}>
-          {isReLaunch ? "REPLAY THE ROUND" : "PLAY ONE"}
+        <button type="button" className="onboard-cta" onClick={onPlay}>
+          {isReLaunch ? "Replay the round" : "Play one question"}
+          <span className="onboard-cta-arrow" aria-hidden="true" />
         </button>
       </div>
     </div>
@@ -356,13 +302,14 @@ function HookStep({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Step 1.5: Countdown — 3-2-1 between hook and sample
+// Step 1.5: Countdown — single brick stamp
 // ─────────────────────────────────────────────────────────────────────────────
 function CountdownStep({ onDone }: { onDone: () => void }) {
   const [n, setN] = useState(3);
+
   useEffect(() => {
     if (n <= 0) {
-      const t = setTimeout(onDone, 200);
+      const t = setTimeout(onDone, 220);
       return () => clearTimeout(t);
     }
     const t = setTimeout(() => setN((v) => v - 1), COUNTDOWN_DURATION_MS / 4);
@@ -372,15 +319,15 @@ function CountdownStep({ onDone }: { onDone: () => void }) {
   return (
     <div className="onboard-step onboard-step-countdown">
       <div className="onboard-countdown-num" key={n}>
-        {n > 0 ? n : "GO"}
+        {n > 0 ? n : "Go"}
       </div>
-      <div className="onboard-countdown-caption">GET READY</div>
+      <div className="onboard-countdown-caption">Get ready</div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Step 2: Sample — one timed question
+// Step 2: Sample — editorial answer list
 // ─────────────────────────────────────────────────────────────────────────────
 function SampleStep({
   onAnswered,
@@ -398,51 +345,47 @@ function SampleStep({
       const elapsed = (Date.now() - startedAt.current) / 1000;
       const remaining = Math.max(0, SAMPLE_TIMER_SEC - elapsed);
       setTimer(remaining);
-      if (remaining <= 0) {
-        onAnswered(-1, false);
-      }
+      if (remaining <= 0) onAnswered(-1, false);
     };
     const interval = setInterval(tick, 100);
     return () => clearInterval(interval);
   }, [onAnswered]);
 
-  const handlePick = (idx: number) => {
-    const correct = idx === HERO_QUESTION.correct;
-    onAnswered(idx, correct);
-  };
-
-  const ringPct = Math.max(0, Math.min(100, (timer / SAMPLE_TIMER_SEC) * 100));
+  const ringPct = Math.max(0, Math.min(1, timer / SAMPLE_TIMER_SEC));
   const timerLow = timer <= 3;
 
   return (
     <div className="onboard-step onboard-step-sample">
-      <SkipButton onClick={onSkip} />
-
-      <div className="onboard-sample-head">
-        <span className="onboard-step-chip">ROUND 1</span>
-        <div className={"onboard-timer-bar" + (timerLow ? " low" : "")} aria-live="off">
-          <div className="onboard-timer-fill" style={{ width: `${ringPct}%` }} />
-          <span className="onboard-timer-label">
-            {Math.ceil(timer)}s
-          </span>
-        </div>
+      <Masthead onSkip={onSkip} />
+      <div className="onboard-section-bar">
+        <span>Round one</span>
+        <span className="onboard-section-bar-sep" aria-hidden="true" />
+        <span>Words</span>
+        <span style={{ flex: 1 }} />
+        <span style={{ fontVariantNumeric: "tabular-nums" }}>{Math.ceil(timer)} sec</span>
+      </div>
+      <div className={"onboard-timer" + (timerLow ? " low" : "")}>
+        <div
+          className="onboard-timer-fill"
+          style={{ transform: `scaleX(${ringPct})` }}
+        />
       </div>
 
-      <div className="onboard-question">
-        <div className="onboard-question-cat">CATEGORY · WORDS</div>
-        <h2 className="onboard-question-text">{HERO_QUESTION.prompt}</h2>
-      </div>
+      <h2 className="onboard-question">{HERO_QUESTION.prompt}</h2>
 
-      <div className="onboard-answer-grid">
+      <div className="onboard-answers">
         {HERO_QUESTION.answers.map((answer, idx) => (
           <button
             key={idx}
             type="button"
-            className="onboard-answer pressable"
-            onClick={() => handlePick(idx)}
+            className="onboard-answer"
+            onClick={() => onAnswered(idx, idx === HERO_QUESTION.correct)}
           >
-            <span className="onboard-answer-key">{String.fromCharCode(65 + idx)}</span>
+            <span className="onboard-answer-key">{String.fromCharCode(65 + idx)}.</span>
             <span className="onboard-answer-text">{answer}</span>
+            <svg className="onboard-answer-arrow" viewBox="0 0 14 14" aria-hidden="true">
+              <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
         ))}
       </div>
@@ -451,7 +394,7 @@ function SampleStep({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Step 2.5: Feedback — brief reaction (correct/wrong/timeout)
+// Step 2.5: Feedback — single hand-stamped mark
 // ─────────────────────────────────────────────────────────────────────────────
 function FeedbackStep({
   result,
@@ -469,42 +412,27 @@ function FeedbackStep({
   const correctText = HERO_QUESTION.answers[HERO_QUESTION.correct];
 
   return (
-    <div className={"onboard-step onboard-step-feedback " + (result.correct ? "correct" : "missed")}>
-      {result.correct && <Confetti pieces={28} />}
-
-      <div className="onboard-feedback-icon" aria-hidden="true">
-        {result.correct ? (
-          <svg viewBox="0 0 80 80" width="120" height="120">
-            <circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" strokeWidth="6" />
-            <path d="M22 42 L36 56 L60 28" stroke="currentColor" strokeWidth="8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        ) : (
-          <svg viewBox="0 0 80 80" width="120" height="120">
-            <circle cx="40" cy="40" r="34" fill="none" stroke="currentColor" strokeWidth="6" />
-            <path d="M28 28 L52 52 M52 28 L28 52" stroke="currentColor" strokeWidth="8" fill="none" strokeLinecap="round" />
-          </svg>
-        )}
+    <div className="onboard-step onboard-step-feedback">
+      <Masthead />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 24, textAlign: "center" }}>
+        <div className={"onboard-feedback-stamp" + (result.correct ? "" : " missed")}>
+          {result.correct ? <CheckStamp /> : <XStamp />}
+        </div>
+        <div className="onboard-feedback-headline">
+          {result.correct ? "Nice." : isTimeout ? "Out of time." : "Close."}
+        </div>
+        <div className="onboard-feedback-sub">
+          {result.correct
+            ? <>+{ONBOARD_XP_REWARD} XP, in pencil for now.</>
+            : <>It was <em>{correctText}</em>. We're crediting +{ONBOARD_XP_REWARD} anyway.</>}
+        </div>
       </div>
-
-      <div className="onboard-feedback-headline">
-        {result.correct ? "NICE." : isTimeout ? "RAN OUT." : "CLOSE."}
-      </div>
-      <div className="onboard-feedback-sub">
-        {result.correct
-          ? `+${ONBOARD_XP_REWARD} XP locked in.`
-          : isTimeout
-            ? `It was ${correctText}. Still +${ONBOARD_XP_REWARD} XP.`
-            : `It was ${correctText}. Still +${ONBOARD_XP_REWARD} XP.`}
-      </div>
-      {!result.correct && (
-        <div className="onboard-feedback-reveal">{HERO_QUESTION.reveal}</div>
-      )}
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Step 3: Result — sign-in conversion
+// Step 3: Result — receipt with PENDING stamp
 // ─────────────────────────────────────────────────────────────────────────────
 function ResultStep({
   sampleCorrect,
@@ -523,42 +451,38 @@ function ResultStep({
 }) {
   return (
     <div className="onboard-step onboard-step-result">
-      <SkipButton onClick={onSkip} disabled={isSigningIn} />
-
-      <div className="onboard-result-head">
-        <span className="onboard-step-chip">ROUND COMPLETE</span>
+      <Masthead onSkip={onSkip} skipDisabled={isSigningIn} />
+      <div className="onboard-section-bar">
+        <span>Round complete</span>
       </div>
 
-      <div className="onboard-reward-stack">
-        <div className="onboard-reward-headline">YOU JUST EARNED</div>
-        <div className="onboard-reward-amount">+{ONBOARD_XP_REWARD}<span className="onboard-reward-unit">XP</span></div>
+      <h2 className="onboard-result-headline">
+        You earned <strong>{ONBOARD_XP_REWARD} XP</strong>.
+      </h2>
 
-        <div className="onboard-reward-tokens">
-          <LockedReward
-            icon={<PixelImg src={ASSETS.xpGem} size={56} alt="" />}
-            label={`${ONBOARD_XP_REWARD} XP`}
-          />
-          <LockedReward
-            icon={<PixelImg src={ASSETS.ticket} size={56} alt="" />}
-            label="1 TICKET"
-          />
-        </div>
-
-        <div className="onboard-reward-caption">
-          {sampleCorrect
-            ? "Sign in with World to claim your XP and your first ticket."
-            : "Sign in anyway — we round up. XP and a ticket on us."}
-        </div>
+      <div className="onboard-receipt">
+        <div className="onboard-receipt-pending">Pending</div>
+        <ReceiptRow label="XP" value={String(ONBOARD_XP_REWARD)} />
+        <ReceiptRow label="Tickets" value="1" />
+        <hr className="onboard-rule-dotted" />
+        <ReceiptRow label="Status" value="Unclaimed" />
       </div>
 
-      <div className="onboard-cta-bar onboard-cta-bar-stacked">
+      <p className="onboard-result-caption">
+        {sampleCorrect
+          ? "Sign in with your World wallet to make it real and start earning for keeps."
+          : "We round up. Sign in to claim your XP and your first ticket — the round wasn't graded."}
+      </p>
+
+      <div className="onboard-cta-bar">
         <button
           type="button"
-          className="onboard-cta onboard-cta-primary"
+          className="onboard-cta"
           onClick={onSignIn}
           disabled={isSigningIn}
         >
-          {isSigningIn ? "SIGNING IN…" : "SIGN IN WITH WORLD"}
+          {isSigningIn ? "Signing in…" : "Sign in with World"}
+          {!isSigningIn && <span className="onboard-cta-arrow" aria-hidden="true" />}
         </button>
         <button
           type="button"
@@ -566,19 +490,27 @@ function ResultStep({
           onClick={onSkip}
           disabled={isSigningIn}
         >
-          Maybe later
+          later
         </button>
-        {isInstalled === false && (
-          <p className="onboard-result-note">Open Waffles inside World App to sign in.</p>
-        )}
-        {error && <p className="onboard-result-error">{error}</p>}
+        {isInstalled === false && <p className="onboard-note">Open Waffles inside World App to sign in.</p>}
+        {error && <p className="onboard-error">{error}</p>}
       </div>
     </div>
   );
 }
 
+function ReceiptRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="onboard-receipt-row">
+      <span className="onboard-receipt-label">{label}</span>
+      <span className="onboard-receipt-leader" aria-hidden="true" />
+      <span className="onboard-receipt-value">{value}</span>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Step 4: Verify — humanness check (post-auth)
+// Step 4: Verify — humanness check
 // ─────────────────────────────────────────────────────────────────────────────
 function VerifyStep({
   isChecking,
@@ -586,25 +518,25 @@ function VerifyStep({
   success,
   onVerify,
   onDismiss,
-  sampleEarnedXp,
 }: {
   isChecking: boolean;
   error: string | null;
   success: VerifyLevel | null;
   onVerify: () => void;
   onDismiss: () => void;
-  sampleEarnedXp: boolean;
 }) {
   if (success) {
     return (
       <div className="onboard-step onboard-step-verify success">
-        <Confetti pieces={42} />
-        <div className="onboard-verify-success-graphic" aria-hidden="true">
-          <PixelImg src={ASSETS.trophy} size={108} alt="" />
-        </div>
-        <div className="onboard-verify-headline">YOU'RE IN.</div>
-        <div className="onboard-verify-sub">
-          Tournaments unlocked. {sampleEarnedXp ? `+${VERIFY_XP_REWARD} XP credited.` : ""}
+        <Masthead />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 24 }}>
+          <div className="onboard-verify-success-mark">
+            <CheckStamp />
+          </div>
+          <h2 className="onboard-verify-success-headline">You're in.</h2>
+          <p className="onboard-verify-success-sub">
+            Tournaments unlocked. +{VERIFY_XP_REWARD} XP added to your account.
+          </p>
         </div>
       </div>
     );
@@ -612,38 +544,32 @@ function VerifyStep({
 
   return (
     <div className="onboard-step onboard-step-verify">
-      <SkipButton onClick={onDismiss} disabled={isChecking} />
-
-      <div className="onboard-verify-head">
-        <span className="onboard-step-chip">LAST STEP</span>
+      <Masthead onSkip={onDismiss} skipDisabled={isChecking} />
+      <div className="onboard-section-bar">
+        <span>Last step</span>
       </div>
 
-      <div className="onboard-verify-graphic">
-        <div className="onboard-verify-trophy-stack">
-          <PixelImg src={ASSETS.trophy} size={96} alt="" />
-          <PixelImg src={ASSETS.ticket} size={64} alt="" style={{ marginLeft: -12 }} />
-        </div>
-        <div className="onboard-verify-locked-overlay" aria-hidden="true">
-          <PixelImg src={ASSETS.lock} size={36} alt="" />
-        </div>
+      <div className="onboard-verify-mark">
+        <FingerprintMark />
       </div>
 
-      <div className="onboard-verify-text">
-        <h2 className="onboard-verify-headline">PLAY FOR REAL PRIZES</h2>
-        <p className="onboard-verify-sub">
-          Tournaments pay real prizes, so we need to know each player is one human.
-          One quick check with World ID.
-        </p>
-      </div>
+      <h2 className="onboard-verify-headline">Are you a person?</h2>
+      <p className="onboard-verify-lede">
+        Tournaments pay real prizes, so we like to know each player is one
+        human. Two seconds with World ID and we're done.
+      </p>
 
-      <div className="onboard-cta-bar onboard-cta-bar-stacked">
+      <WallyMark />
+
+      <div className="onboard-cta-bar">
         <button
           type="button"
-          className="onboard-cta onboard-cta-leaf"
+          className="onboard-cta"
           onClick={onVerify}
           disabled={isChecking}
         >
-          {isChecking ? "CHECKING…" : "VERIFY WITH WORLD ID"}
+          {isChecking ? "Checking…" : "Verify with World ID"}
+          {!isChecking && <span className="onboard-cta-arrow" aria-hidden="true" />}
         </button>
         <button
           type="button"
@@ -651,16 +577,16 @@ function VerifyStep({
           onClick={onDismiss}
           disabled={isChecking}
         >
-          Maybe later
+          later
         </button>
-        {error && <p className="onboard-result-error">{error}</p>}
+        {error && <p className="onboard-error">{error}</p>}
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Skip confirmation sheet (bottom)
+// Skip sheet
 // ─────────────────────────────────────────────────────────────────────────────
 function SkipSheet({
   mode,
@@ -673,33 +599,28 @@ function SkipSheet({
 }) {
   const isVerify = mode === "verify";
   return (
-    <div className="onboard-skip-backdrop" onClick={onClose}>
+    <div className="onboard-sheet-backdrop" onClick={onClose}>
       <div
-        className="onboard-skip-sheet"
+        className="onboard-sheet"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="onboard-skip-title"
+        aria-labelledby="onboard-sheet-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="onboard-skip-handle" aria-hidden="true" />
-        <h3 id="onboard-skip-title" className="onboard-skip-title">
+        <h3 id="onboard-sheet-title" className="onboard-sheet-title">
           {isVerify ? "Skip verification?" : "Finish later?"}
         </h3>
-        <p className="onboard-skip-body">
+        <p className="onboard-sheet-body">
           {isVerify
-            ? `You can play levels and earn XP without it. Find "Verify yourself" in Daily Missions for +${VERIFY_XP_REWARD} XP whenever you're ready.`
-            : `You'll find "Finish setup" in Daily Missions for +${ONBOARD_XP_REWARD} XP whenever you want to come back.`}
+            ? `You can play levels and earn XP without verifying. We'll save "Verify yourself" in your missions for +${VERIFY_XP_REWARD} XP whenever you're ready.`
+            : `We'll save "Finish setup" in your missions for +${ONBOARD_XP_REWARD} XP whenever you'd like to come back.`}
         </p>
-        <div className="onboard-skip-actions">
-          <button
-            type="button"
-            className="onboard-cta onboard-cta-secondary"
-            onClick={onConfirm}
-          >
-            {isVerify ? "SKIP FOR NOW" : "FINISH LATER"}
+        <div className="onboard-sheet-actions">
+          <button type="button" className="onboard-cta" onClick={onConfirm}>
+            {isVerify ? "Skip for now" : "Finish later"}
           </button>
           <button type="button" className="onboard-cta-text" onClick={onClose}>
-            Keep going
+            keep going
           </button>
         </div>
       </div>
@@ -710,68 +631,184 @@ function SkipSheet({
 // ─────────────────────────────────────────────────────────────────────────────
 // Reusable bits
 // ─────────────────────────────────────────────────────────────────────────────
-function SkipButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+function Masthead({
+  live = false,
+  onSkip,
+  skipDisabled,
+}: {
+  live?: boolean;
+  onSkip?: () => void;
+  skipDisabled?: boolean;
+}) {
   return (
-    <button
-      type="button"
-      className="onboard-skip"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label="Skip onboarding"
-    >
-      Skip
-    </button>
+    <header className="onboard-masthead">
+      <span className="onboard-masthead-issue">
+        Waffles <span className="onboard-masthead-num">№47</span>
+      </span>
+      <span className="onboard-masthead-right">
+        {live && (
+          <span className="onboard-masthead-live">
+            <span className="onboard-masthead-dot" aria-hidden="true" /> On air
+          </span>
+        )}
+        {onSkip && (
+          <button
+            type="button"
+            className="onboard-skip"
+            onClick={onSkip}
+            disabled={skipDisabled}
+            aria-label="Skip onboarding"
+          >
+            skip
+          </button>
+        )}
+      </span>
+    </header>
   );
 }
 
-function LockedReward({ icon, label }: { icon: ReactNode; label: string }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// SVG primitives — hand-drawn-feeling line work in single ink color
+// ─────────────────────────────────────────────────────────────────────────────
+
+// "ROUND OF THE HOUR" rubber-stamp circle. Curved text + central icon.
+function RoundStamp() {
+  // Curved text uses a circular path with textPath
   return (
-    <div className="onboard-locked-reward" aria-label={`Locked reward: ${label}`}>
-      <div className="onboard-locked-reward-icon">{icon}</div>
-      <div className="onboard-locked-reward-label">{label}</div>
-      <div className="onboard-locked-reward-lock" aria-hidden="true">
-        <PixelImg src={ASSETS.lock} size={20} alt="" />
-      </div>
+    <div className="onboard-stamp" aria-hidden="true">
+      <svg viewBox="0 0 132 132" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <path
+            id="onboard-stamp-circle"
+            d="M 66 66 m -52 0 a 52 52 0 1 1 104 0 a 52 52 0 1 1 -104 0"
+          />
+        </defs>
+        {/* Outer ring */}
+        <circle cx="66" cy="66" r="62" fill="none" stroke="currentColor" strokeWidth="1.4" />
+        {/* Inner ring */}
+        <circle cx="66" cy="66" r="56" fill="none" stroke="currentColor" strokeWidth="0.8" opacity="0.6" />
+        {/* Curved text along the inner-circle path */}
+        <text fontFamily="var(--font-body), Funnel Sans, system-ui" fontSize="9" fontWeight="700" letterSpacing="2.4" fill="currentColor" style={{ textTransform: "uppercase" }}>
+          <textPath href="#onboard-stamp-circle" startOffset="0">
+            ROUND OF THE HOUR · ROUND OF THE HOUR ·
+          </textPath>
+        </text>
+        {/* Central numeral with hand-drawn feel */}
+        <text x="66" y="78" textAnchor="middle" fontFamily="var(--font-display), Funnel Display, Georgia, serif" fontSize="38" fontWeight="800" fill="currentColor" letterSpacing="-1">
+          №01
+        </text>
+        {/* Tiny "PRESS" mark */}
+        <text x="66" y="92" textAnchor="middle" fontFamily="var(--font-body), Funnel Sans, system-ui" fontSize="6" fontWeight="700" letterSpacing="1.6" fill="currentColor" opacity="0.7">
+          PRESS TO PLAY
+        </text>
+      </svg>
     </div>
   );
 }
 
-function ClockDigit({ value, label }: { value: string; label: string }) {
+// Hand-drawn-feeling checkmark inside a slightly imperfect circle
+function CheckStamp() {
   return (
-    <div className="onboard-clock-digit">
-      <div className="onboard-clock-value">{value}</div>
-      <div className="onboard-clock-label">{label}</div>
+    <svg viewBox="0 0 152 152" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      {/* Slightly imperfect circle (path, not perfect arc) */}
+      <path
+        d="M 76 12 C 110 12 140 40 140 76 C 140 112 112 142 76 140 C 40 142 12 112 14 76 C 12 40 42 12 76 12 Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3.5"
+        strokeLinejoin="round"
+      />
+      {/* Hand-drawn checkmark — varies stroke slightly */}
+      <path
+        d="M 44 78 L 70 102 L 110 50"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function XStamp() {
+  return (
+    <svg viewBox="0 0 152 152" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path
+        d="M 76 12 C 110 12 140 40 140 76 C 140 112 112 142 76 140 C 40 142 12 112 14 76 C 12 40 42 12 76 12 Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3.5"
+        strokeLinejoin="round"
+      />
+      <path d="M 50 50 L 102 102 M 102 50 L 50 102" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Fingerprint mark for the verify step — line drawing, single ink
+function FingerprintMark() {
+  return (
+    <svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+        <path d="M 18 60 C 18 38 30 22 48 22 C 66 22 78 38 78 60" />
+        <path d="M 26 64 C 26 46 36 32 48 32 C 60 32 70 46 70 64 C 70 70 68 76 64 80" opacity="0.85" />
+        <path d="M 34 66 C 34 52 40 42 48 42 C 56 42 62 52 62 66 C 62 72 60 76 56 80" opacity="0.7" />
+        <path d="M 42 68 C 42 60 44 52 48 52 C 52 52 54 60 54 68 C 54 72 53 76 50 78" opacity="0.55" />
+        {/* Indication marks — small ticks suggesting analysis */}
+        <path d="M 14 28 L 20 28 M 76 28 L 82 28 M 14 82 L 20 82 M 76 82 L 82 82" opacity="0.55" />
+      </g>
+    </svg>
+  );
+}
+
+// Wally — flat ink line drawing of a waffle character. Sits, watches.
+function WallyMark() {
+  return (
+    <div className="onboard-wally" aria-hidden="true">
+      <svg viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg">
+        <g fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          {/* Waffle body — rounded square */}
+          <rect x="20" y="22" width="56" height="48" rx="6" />
+          {/* Waffle grid (3x3 cells) */}
+          <path d="M 38 22 L 38 70 M 56 22 L 56 70" opacity="0.65" />
+          <path d="M 20 38 L 76 38 M 20 54 L 76 54" opacity="0.65" />
+          {/* Eyes (inside upper-middle cells) */}
+          <circle cx="44" cy="32" r="1.6" fill="currentColor" stroke="none" />
+          <circle cx="52" cy="32" r="1.6" fill="currentColor" stroke="none" />
+          {/* Smile */}
+          <path d="M 42 46 Q 48 50 54 46" />
+          {/* Stick legs */}
+          <path d="M 36 70 L 32 86 M 60 70 L 64 86" />
+          {/* Stick arms — one raised in a small wave */}
+          <path d="M 20 44 L 10 38 M 76 44 L 86 30" />
+          {/* Tiny ground rule */}
+          <path d="M 16 90 L 80 90" opacity="0.4" />
+        </g>
+      </svg>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tiny utilities
+// Hooks
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Number that ticks up periodically — adds life to the "players in" counter.
 function useTickingNumber(start: number, end: number, intervalMs: number) {
   const [n, setN] = useState(start);
   useEffect(() => {
     const t = setInterval(() => {
-      setN((curr) => {
-        if (curr >= end) return start;
-        return curr + 1 + Math.floor(Math.random() * 3);
-      });
+      setN((curr) => (curr >= end ? start : curr + 1 + Math.floor(Math.random() * 3)));
     }, intervalMs);
     return () => clearInterval(t);
   }, [start, end, intervalMs]);
   return n;
 }
 
-// Mocked "next tournament" countdown — a 17-minute window that resets when
-// it hits zero. See open question #5: the real source can be wired later.
 function useCountdownClock() {
   const [seconds, setSeconds] = useState(17 * 60 + 42);
   useEffect(() => {
-    const t = setInterval(() => {
-      setSeconds((s) => (s <= 1 ? 17 * 60 : s - 1));
-    }, 1000);
+    const t = setInterval(() => setSeconds((s) => (s <= 1 ? 17 * 60 : s - 1)), 1000);
     return () => clearInterval(t);
   }, []);
   const m = Math.floor(seconds / 60);

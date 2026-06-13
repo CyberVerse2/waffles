@@ -93,8 +93,17 @@ export const PixelImg = ({
   />
 );
 
-export const Phone = ({ children }: { children: ReactNode; statusDark?: boolean; time?: string }) => (
-  <div className="phone">
+export const Phone = ({
+  children,
+  paper,
+}: {
+  children: ReactNode;
+  statusDark?: boolean;
+  time?: string;
+  /** Use the cream-paper surface (per .impeccable.md) instead of the legacy dark frame. */
+  paper?: boolean;
+}) => (
+  <div className={"phone" + (paper ? " phone-paper" : "")}>
     <div className="body">{children}</div>
   </div>
 );

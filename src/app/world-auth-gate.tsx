@@ -17,7 +17,7 @@ export function WorldAuthGate({ children }: { children: ReactNode }) {
   if (session?.user?.address || isBypassed) {
     return (
       <>
-        <div className="world-auth-pill">
+        <div className="world-auth-pill world-auth-pill-paper">
           <span>{session?.user?.address ? compactAddress(session.user.address) : "Prototype"}</span>
           {session?.user?.address ? (
             <button type="button" onClick={() => void signOut({ redirect: false })}>
