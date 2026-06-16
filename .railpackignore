@@ -1,0 +1,7 @@
+# Keep the Railpack build context small. Mirrors .gitignore for the heavy
+# regeneratable source art — only public/images/v2/optimized/*.webp ships.
+design-assets/
+node_modules
+.next
+out
+dist

@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { useProto } from "../state";
-import { ASSETS, Confetti, Phone, PixelImg, SectionLabel, TabBar, TicketIcon, TopHeader } from "../shared";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { FIRST_TICKET_DISCOUNT, isFirstTicketOfferAvailable, markFirstTicketOfferUsed, TOURNAMENT_TICKET_COST, usdtLabel, useProto, USDT_PER_TICKET } from "../state";
+import { ASSETS, AssetWell, Button, Card, Confetti, InfoButton, Phone, PixelImg, Sheet, TabBar, TicketIcon, TopHeader } from "../shared";
+import { playSound } from "../sound";
+
+const TICKET_INFO = `Tickets are the in-app currency — each is worth ${USDT_PER_TICKET} USDT. Spend them on tournament entries today, with power-ups and cosmetics coming soon. Prizes you win in tournaments are paid in USDT and can be claimed from your Prize Wallet.`;
 
 // ===== Catalog =================================================================
 // Pulled out of the component so the purchase sub-views can read items by id
@@ -80,6 +83,25 @@ export const ShopScreen = () => {
   const [equippedToast, setEquippedToast] = useState<string | null>(null);
   const [ticketCountUp, setTicketCountUp] = useState<{ from: number; to: number; key: number } | null>(null);
 
+  // First-timer half-price ticket offer (client-read, hydration-safe). Hidden
+  // locally the moment it's bought, since localStorage changes don't re-notify.
+  const firstTicketOffer = useSyncExternalStore(() => () => {}, isFirstTicketOfferAvailable, () => false);
+  const [offerHidden, setOfferHidden] = useState(false);
+  const showFirstTicketOffer = firstTicketOffer && !offerHidden;
+  const buyFirstTicket = () => {
+    markFirstTicketOfferUsed();
+    setOfferHidden(true);
+    playSound("purchase");
+    const before = tickets;
+    proto.update({ tickets: before + TOURNAMENT_TICKET_COST }); // prototype — no real charge
+    setTicketCountUp({ from: before, to: before + TOURNAMENT_TICKET_COST, key: Date.now() });
+  };
+  const eventSeq = useRef(0);
+  const nextEventKey = () => {
+    eventSeq.current += 1;
+    return eventSeq.current;
+  };
+
   // ---- Snackbar lifecycle (4-second auto-commit window for power-ups) -------
   // Power-up purchases commit balance immediately and show a 4s snackbar; if
   // the user taps UNDO during the window we refund. After 4s the snackbar
@@ -117,14 +139,15 @@ export const ShopScreen = () => {
       return;
     }
     // Commit immediately, queue the snackbar with an undo handler that refunds.
+    playSound("purchase");
     proto.update({ tickets: tickets - p.price });
     setSnackbar({
-      id: `pu-${p.id}-${Date.now()}`,
+      id: `pu-${p.id}-${nextEventKey()}`,
       label: `${p.label} purchased`,
       onUndo: () => {
         // Use a fresh state read via proto.update's functional patch.
         proto.update((s) => ({ tickets: s.tickets + p.price }));
-        setSnackbar((sb) => (sb ? { ...sb, label: "Refunded", refundedAt: Date.now(), onUndo: () => {} } : sb));
+        setSnackbar((sb) => (sb ? { ...sb, label: "Refunded", refundedAt: nextEventKey(), onUndo: () => {} } : sb));
       },
     });
   };
@@ -151,12 +174,14 @@ export const ShopScreen = () => {
   };
 
   const confirmCosmetic = (c: Cosmetic) => {
+    playSound("purchase");
     proto.update({ tickets: tickets - c.price });
     setEquippedToast(`${c.label} equipped`);
     setFlow(null);
   };
 
   const confirmFeatured = () => {
+    playSound("purchase");
     proto.update({ tickets: tickets - FEATURED.price });
     setBoostBanner(`${FEATURED.title} active — ${FEATURED.benefits[0]}`);
     setFlow(null);
@@ -172,8 +197,9 @@ export const ShopScreen = () => {
     const before = tickets;
     setTimeout(() => {
       const total = b.count + b.bonus;
+      playSound("purchase");
       proto.update({ tickets: before + total });
-      setTicketCountUp({ from: before, to: before + total, key: Date.now() });
+      setTicketCountUp({ from: before, to: before + total, key: nextEventKey() });
       setFlow(null);
     }, 750);
   };
@@ -188,57 +214,110 @@ export const ShopScreen = () => {
       <TopHeader tickets={tickets} title="SHOP" />
 
       <div style={{ position: "absolute", top: 12, left: 0, right: 0, bottom: 80, padding: "4px 14px 14px", overflow: "auto" }}>
-        {/* Featured offer card */}
-        <button
-          type="button"
-          onClick={tryOpenFeatured}
-          aria-label={`Featured offer — ${FEATURED.title} for ${FEATURED.price} tickets`}
-          style={{
-            background: `linear-gradient(135deg, ${FEATURED.accent}33, #0F0F10 70%)`,
-            border: `1px solid ${FEATURED.accent}55`,
-            borderRadius: 18,
-            padding: "14px 16px",
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-            marginBottom: 14,
-            boxShadow: `0 0 30px ${FEATURED.accent}22`,
-            width: "100%",
-            textAlign: "left",
-            cursor: "pointer",
-          }}
-        >
-          <div style={{ width: 62, height: 62, borderRadius: 14, background: `${FEATURED.accent}25`, border: `1.5px solid ${FEATURED.accent}66`, display: "flex", alignItems: "center", justifyContent: "center", color: FEATURED.accent, fontFamily: "Archivo Black", fontSize: 22, flexShrink: 0 }}>2×</div>
+        {/* Balance header — ticket count on the left, its USDT cash value on the
+            right (what the info icon explains), so the bar reads as a real wallet
+            instead of a few items crammed against the edge. */}
+        <Card accent="var(--maple-500)" radius={14} pad="12px 14px" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, boxShadow: "0 0 24px rgba(255,201,49,.06)" }}>
+          <AssetWell size={52} accent="var(--maple-500)" radius={13}>
+            <TicketIcon size={28} />
+          </AssetWell>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 9, fontWeight: 900, color: FEATURED.accent, letterSpacing: 1.4 }}>FEATURED · ENDS IN {FEATURED.endsIn.toUpperCase()}</div>
-            <div style={{ fontFamily: "Archivo Black", fontSize: 18, color: "#fff", lineHeight: 1.05, marginTop: 2 }}>{FEATURED.title}</div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.6)", marginTop: 2 }}>{FEATURED.sub}</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+              <span style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "#fff", lineHeight: 1 }}>{tickets}</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,.45)", letterSpacing: 0.8, textTransform: "uppercase" }}>tickets</span>
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.5)", marginTop: 3 }}>Your balance</div>
           </div>
-          <div style={{ background: FEATURED.accent, color: "#1e1e1e", padding: "8px 12px", borderRadius: 10, fontFamily: "Archivo Black", fontSize: 13, letterSpacing: 0.3, boxShadow: "0 3px 0 rgba(0,0,0,.3)", display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-            <TicketIcon size={14} />{FEATURED.price}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontFamily: "var(--font-display)", fontSize: 15, color: "var(--leaf)", lineHeight: 1 }}>≈ {(tickets * USDT_PER_TICKET).toFixed(2)} USDT</span>
+              <InfoButton title="Ticket value" text={TICKET_INFO} size={18} />
+            </div>
+            <div style={{ fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,.35)", letterSpacing: 0.8, textTransform: "uppercase" }}>cash value</div>
           </div>
-        </button>
+        </Card>
 
-        <SectionLabel>POWER-UPS</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-          {POWER_UPS.map((p) => (
-            <PowerUpCard key={p.id} item={p} affordable={tickets >= p.price} onBuy={() => tryBuyPowerUp(p)} />
-          ))}
-        </div>
+        {/* Featured offer card */}
+        <ComingSoonLabel>FEATURED</ComingSoonLabel>
+        <ComingSoonVeil note="Limited-time boosts like 2× XP arrive here soon.">
+          <button
+            type="button"
+            onClick={tryOpenFeatured}
+            aria-label={`Featured offer — ${FEATURED.title} for ${FEATURED.price} tickets`}
+            style={{
+              background: `linear-gradient(135deg, ${FEATURED.accent}33, #0F0F10 70%)`,
+              border: `1px solid ${FEATURED.accent}55`,
+              borderRadius: 18,
+              padding: "14px 16px",
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              boxShadow: `0 0 30px ${FEATURED.accent}22`,
+              width: "100%",
+              textAlign: "left",
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ width: 62, height: 62, borderRadius: 14, background: `${FEATURED.accent}25`, border: `1.5px solid ${FEATURED.accent}66`, display: "flex", alignItems: "center", justifyContent: "center", color: FEATURED.accent, fontFamily: "var(--font-display)", fontSize: 22, flexShrink: 0 }}>2×</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 9, fontWeight: 900, color: FEATURED.accent, letterSpacing: 1.4 }}>FEATURED · ENDS IN {FEATURED.endsIn.toUpperCase()}</div>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "#fff", lineHeight: 1.05, marginTop: 2 }}>{FEATURED.title}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.6)", marginTop: 2 }}>{FEATURED.sub}</div>
+            </div>
+            <div style={{ background: FEATURED.accent, color: "#1e1e1e", padding: "8px 12px", borderRadius: 10, fontFamily: "var(--font-display)", fontSize: 13, letterSpacing: 0.3, boxShadow: "0 3px 0 rgba(0,0,0,.3)", display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+              <TicketIcon size={14} />{FEATURED.price}
+            </div>
+          </button>
+        </ComingSoonVeil>
 
-        <SectionLabel>COSMETICS</SectionLabel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-          {COSMETICS.map((c) => (
-            <CosmeticRow key={c.id} item={c} affordable={tickets >= c.price} onOpen={() => tryOpenCosmetic(c)} />
-          ))}
-        </div>
+        <ComingSoonLabel>POWER-UPS</ComingSoonLabel>
+        <ComingSoonVeil note="In-game boosts land here soon.">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {POWER_UPS.map((p) => (
+              <PowerUpCard key={p.id} item={p} affordable={tickets >= p.price} onBuy={() => tryBuyPowerUp(p)} />
+            ))}
+          </div>
+        </ComingSoonVeil>
 
-        <SectionLabel>TICKETS</SectionLabel>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          {BUNDLES.map((b, i) => (
-            <BundleCard key={i} bundle={b} onBuy={() => beginBundleCheckout(i)} />
-          ))}
-        </div>
+        <ComingSoonLabel>COSMETICS</ComingSoonLabel>
+        <ComingSoonVeil note="Frames, name colors & emotes drop soon.">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {COSMETICS.map((c) => (
+              <CosmeticRow key={c.id} item={c} affordable={tickets >= c.price} onOpen={() => tryOpenCosmetic(c)} />
+            ))}
+          </div>
+        </ComingSoonVeil>
+
+        <ComingSoonLabel>TICKETS</ComingSoonLabel>
+        <ComingSoonVeil note="Buy tickets with USDT here soon — for now, earn them by playing.">
+          {showFirstTicketOffer && (
+            <button
+              type="button"
+              onClick={buyFirstTicket}
+              aria-label={`Buy your first ticket at half price, ${usdtLabel(TOURNAMENT_TICKET_COST * (1 - FIRST_TICKET_DISCOUNT))}`}
+              style={{ width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 12, background: "rgba(255,201,49,0.10)", border: "1.5px solid var(--maple-500)", borderRadius: 14, padding: "12px 14px", marginBottom: 10, cursor: "pointer" }}
+            >
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                <TicketIcon size={28} />
+                <div style={{ position: "absolute", top: -10, right: -16, background: "var(--live-red)", color: "#fff", fontFamily: "var(--font-display)", fontSize: 9, padding: "2px 6px", borderRadius: 99, border: "1.5px solid var(--frame)" }}>-50%</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: "var(--maple-500)", letterSpacing: 1, textTransform: "uppercase" }}>First-timer offer</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "var(--ink)", marginTop: 2 }}>Your first ticket, half price</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-faint)", marginTop: 2 }}>1 ticket = 1 live entry</div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-faint)", textDecoration: "line-through" }}>{usdtLabel(TOURNAMENT_TICKET_COST)}</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--leaf)" }}>{usdtLabel(TOURNAMENT_TICKET_COST * (1 - FIRST_TICKET_DISCOUNT))}</div>
+              </div>
+            </button>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            {BUNDLES.map((b, i) => (
+              <BundleCard key={i} bundle={b} onBuy={() => beginBundleCheckout(i)} />
+            ))}
+          </div>
+        </ComingSoonVeil>
       </div>
 
       <div className="bottom-bar">
@@ -306,7 +385,7 @@ export const ShopScreen = () => {
             animation: "waffles-v2-tile-enter 280ms cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
-          <div style={{ fontFamily: "Archivo Black", fontSize: 11, letterSpacing: 1.4 }}>BOOST ACTIVE</div>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 11, letterSpacing: 1.4 }}>BOOST ACTIVE</div>
           <div style={{ fontSize: 12, fontWeight: 800, marginTop: 2 }}>{boostBanner}</div>
         </div>
       )}
@@ -326,7 +405,7 @@ export const ShopScreen = () => {
             borderRadius: 16,
             border: "2px solid var(--frame)",
             boxShadow: "0 6px 0 var(--frame)",
-            fontFamily: "Archivo Black",
+            fontFamily: "var(--font-display)",
             fontSize: 14,
             letterSpacing: 0.4,
             zIndex: 60,
@@ -351,6 +430,33 @@ export const ShopScreen = () => {
 
 // ===== Catalog cards ===========================================================
 
+// ===== "Coming soon" treatment ================================================
+// Power-ups and cosmetics are teased but not yet purchasable. We keep the real
+// cards rendering (so players can see what's coming) but dim them and lay a
+// non-interactive veil on top — the underlying buy buttons are inert and hidden
+// from assistive tech, so no purchase can fire.
+
+const ComingSoonLabel = ({ children }: { children: ReactNode }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, marginTop: 2 }}>
+    <span style={{ fontFamily: "var(--font-display)", fontSize: 11, color: "rgba(255,255,255,.5)", letterSpacing: 1.2 }}>{children}</span>
+    <span style={{ fontFamily: "var(--font-display)", fontSize: 9, letterSpacing: 1, color: "var(--maple-500)", background: "rgba(255,201,49,.12)", border: "1px solid rgba(255,201,49,.32)", borderRadius: 99, padding: "2px 7px" }}>SOON</span>
+  </div>
+);
+
+const ComingSoonVeil = ({ note, children }: { note: string; children: ReactNode }) => (
+  <div style={{ position: "relative", marginBottom: 14 }}>
+    <div aria-hidden="true" inert style={{ opacity: 0.4, filter: "saturate(.55)", pointerEvents: "none", userSelect: "none" }}>
+      {children}
+    </div>
+    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 14, background: "rgba(15,15,16,.28)" }}>
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(0,0,0,.6)", border: "1px solid rgba(255,255,255,.14)", borderRadius: 99, padding: "7px 14px", fontFamily: "var(--font-display)", fontSize: 12, letterSpacing: 0.5, color: "#fff" }}>
+        <span aria-hidden="true">🔒</span> Coming soon
+      </div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,.6)", textAlign: "center", padding: "0 16px" }}>{note}</div>
+    </div>
+  </div>
+);
+
 const PowerUpCard = ({ item, affordable, onBuy }: { item: PowerUp; affordable: boolean; onBuy: () => void }) => {
   const [committed, setCommitted] = useState(false);
   const click = () => {
@@ -363,13 +469,13 @@ const PowerUpCard = ({ item, affordable, onBuy }: { item: PowerUp; affordable: b
     setTimeout(() => setCommitted(false), 350);
   };
   return (
-    <div style={{ background: "#0F0F10", border: "1px solid rgba(255,255,255,.06)", borderRadius: 14, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: `${item.color}1e`, border: `1px solid ${item.color}40`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <PixelImg src={item.icon} size={28} alt="" />
-        </div>
+    <Card radius={14} pad={12} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <AssetWell size={62} accent={item.color} radius={14}>
+          <PixelImg src={item.icon} size={48} alt="" />
+        </AssetWell>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: "Archivo Black", fontSize: 14, color: "#fff", lineHeight: 1 }}>{item.label}</div>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "#fff", lineHeight: 1 }}>{item.label}</div>
           <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,.5)", marginTop: 2 }}>{item.sub}</div>
         </div>
       </div>
@@ -383,7 +489,7 @@ const PowerUpCard = ({ item, affordable, onBuy }: { item: PowerUp; affordable: b
           color: committed ? "var(--leaf)" : affordable ? "#FFC931" : "var(--ink-faint)",
           borderRadius: 8,
           padding: "6px 0",
-          fontFamily: "Archivo Black",
+          fontFamily: "var(--font-display)",
           fontSize: 13,
           display: "flex",
           alignItems: "center",
@@ -396,7 +502,7 @@ const PowerUpCard = ({ item, affordable, onBuy }: { item: PowerUp; affordable: b
       >
         {committed ? "✓" : (<><TicketIcon size={13} />{item.price}</>)}
       </button>
-    </div>
+    </Card>
   );
 };
 
@@ -418,15 +524,15 @@ const CosmeticRow = ({ item, affordable, onOpen }: { item: Cosmetic; affordable:
       textAlign: "left",
     }}
   >
-    <div style={{ width: 48, height: 48, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <CosmeticGlyph item={item} size={48} />
-    </div>
+      <AssetWell size={54} accent={item.color} radius={13}>
+        <CosmeticGlyph item={item} size={48} />
+      </AssetWell>
     <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ fontFamily: "Archivo Black", fontSize: 14, color: "#fff", lineHeight: 1 }}>{item.label}</div>
+      <div style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "#fff", lineHeight: 1 }}>{item.label}</div>
       <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,.5)", marginTop: 2 }}>{item.type}</div>
     </div>
     {item.owned ? (
-      <div style={{ background: "rgba(0,207,242,.12)", border: "1px solid rgba(0,207,242,.35)", color: "#00CFF2", borderRadius: 8, padding: "6px 12px", fontFamily: "Archivo Black", fontSize: 11 }}>OWNED</div>
+      <div style={{ background: "rgba(0,207,242,.12)", border: "1px solid rgba(0,207,242,.35)", color: "#00CFF2", borderRadius: 8, padding: "6px 12px", fontFamily: "var(--font-display)", fontSize: 11 }}>OWNED</div>
     ) : (
       <div
         style={{
@@ -434,7 +540,7 @@ const CosmeticRow = ({ item, affordable, onOpen }: { item: Cosmetic; affordable:
           color: affordable ? "#1e1e1e" : "var(--ink-faint)",
           padding: "7px 12px",
           borderRadius: 8,
-          fontFamily: "Archivo Black",
+          fontFamily: "var(--font-display)",
           fontSize: 13,
           display: "flex",
           alignItems: "center",
@@ -450,10 +556,10 @@ const CosmeticRow = ({ item, affordable, onOpen }: { item: Cosmetic; affordable:
 
 const BundleCard = ({ bundle, onBuy }: { bundle: Bundle; onBuy: () => void }) => (
   <div style={{ background: "#0F0F10", border: bundle.badge ? "1.5px solid rgba(255,201,49,.4)" : "1px solid rgba(255,255,255,.06)", borderRadius: 12, padding: "10px 6px", textAlign: "center", position: "relative", boxShadow: bundle.badge ? "0 0 20px rgba(255,201,49,.1)" : "none" }}>
-    {bundle.badge && <div style={{ position: "absolute", top: -7, left: "50%", transform: "translateX(-50%)", background: "#FFC931", color: "#1e1e1e", padding: "2px 8px", borderRadius: 99, fontFamily: "Archivo Black", fontSize: 8, letterSpacing: 0.5, whiteSpace: "nowrap" }}>{bundle.badge}</div>}
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 3, marginTop: 4 }}>
+    {bundle.badge && <div style={{ position: "absolute", top: -7, left: "50%", transform: "translateX(-50%)", background: "#FFC931", color: "#1e1e1e", padding: "2px 8px", borderRadius: 99, fontFamily: "var(--font-display)", fontSize: 8, letterSpacing: 0.5, whiteSpace: "nowrap" }}>{bundle.badge}</div>}
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, marginTop: 4 }}>
       <TicketIcon size={20} />
-      <span style={{ fontFamily: "Archivo Black", fontSize: 18, color: "#fff" }}>{bundle.count}</span>
+      <span style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "#fff" }}>{bundle.count}</span>
     </div>
     {bundle.bonus > 0 ? (
       <div style={{ fontSize: 9, fontWeight: 800, color: "#00CFF2", marginTop: 1 }}>+{bundle.bonus} BONUS</div>
@@ -464,7 +570,7 @@ const BundleCard = ({ bundle, onBuy }: { bundle: Bundle; onBuy: () => void }) =>
       type="button"
       onClick={onBuy}
       aria-label={`Buy ${bundle.count + bundle.bonus} tickets for ${bundle.price}`}
-      style={{ marginTop: 6, width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", color: "#fff", borderRadius: 8, padding: "5px 0", fontFamily: "Archivo Black", fontSize: 11, cursor: "pointer" }}
+      style={{ marginTop: 6, width: "100%", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", color: "#fff", borderRadius: 8, padding: "5px 0", fontFamily: "var(--font-display)", fontSize: 11, cursor: "pointer" }}
     >
       {bundle.price}
     </button>
@@ -530,7 +636,7 @@ const WallyPreview = ({ item, applied }: { item: Cosmetic; applied: boolean }) =
             bottom: -4,
             left: "50%",
             transform: "translateX(-50%)",
-            fontFamily: "Archivo Black",
+            fontFamily: "var(--font-display)",
             fontSize: 18,
             color: applied ? item.color : "var(--ink-soft)",
             textShadow: applied ? `0 0 18px ${item.color}88` : "none",
@@ -561,7 +667,7 @@ const WallyPreview = ({ item, applied }: { item: Cosmetic; applied: boolean }) =
           }}
         >
           <PixelImg src={ASSETS.wally} size={26} alt="" />
-          <span style={{ fontFamily: "Archivo Black", fontSize: 12, color: "var(--frame)" }}>!</span>
+          <span style={{ fontFamily: "var(--font-display)", fontSize: 12, color: "var(--frame)" }}>!</span>
         </div>
       )}
     </div>
@@ -569,38 +675,6 @@ const WallyPreview = ({ item, applied }: { item: Cosmetic; applied: boolean }) =
 };
 
 // ===== Sheets ==================================================================
-
-const Backdrop = ({ onClick }: { onClick: () => void }) => (
-  <div
-    role="presentation"
-    onClick={onClick}
-    style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)", zIndex: 20 }}
-  />
-);
-
-const SheetShell = ({ accent, children, ariaLabel }: { accent: string; children: React.ReactNode; ariaLabel: string }) => (
-  <div
-    role="dialog"
-    aria-modal="true"
-    aria-label={ariaLabel}
-    style={{
-      position: "absolute",
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: "var(--surface-1)",
-      borderTop: `2px solid ${accent}`,
-      borderTopLeftRadius: 22,
-      borderTopRightRadius: 22,
-      padding: "20px 18px max(20px, env(safe-area-inset-bottom))",
-      zIndex: 21,
-      animation: "waffles-v2-tile-enter 280ms cubic-bezier(0.22, 1, 0.36, 1)",
-    }}
-  >
-    <div style={{ width: 36, height: 4, borderRadius: 99, background: "rgba(253, 251, 246, 0.2)", margin: "0 auto 14px" }} />
-    {children}
-  </div>
-);
 
 // ----- Cosmetic sheet (preview + buy) -----
 
@@ -616,9 +690,9 @@ const CosmeticSheet = ({ item, canAfford, onClose, onConfirm }: { item: Cosmetic
   };
   const isOwned = item.owned;
   return (
-    <>
-      <Backdrop onClick={onClose} />
-      <SheetShell accent={item.color} ariaLabel={isOwned ? `${item.label} preview` : `Buy ${item.label}`}>
+      <Sheet onClose={onClose} accent={item.color} ariaLabel={isOwned ? `${item.label} preview` : `Buy ${item.label}`}>
+        {(close) => (
+        <>
         {bursting && <Confetti pieces={28} />}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 6 }}>
           <WallyPreview item={item} applied={view === "after"} />
@@ -637,7 +711,7 @@ const CosmeticSheet = ({ item, canAfford, onClose, onConfirm }: { item: Cosmetic
                   background: view === v ? item.color : "transparent",
                   color: view === v ? "var(--frame)" : "var(--ink-soft)",
                   border: "none",
-                  fontFamily: "Archivo Black",
+                  fontFamily: "var(--font-display)",
                   fontSize: 11,
                   letterSpacing: 0.6,
                   padding: "6px 14px",
@@ -654,13 +728,13 @@ const CosmeticSheet = ({ item, canAfford, onClose, onConfirm }: { item: Cosmetic
 
         <div style={{ textAlign: "center", marginBottom: 14 }}>
           <div style={{ fontSize: 11, fontWeight: 800, color: "var(--ink-faint)", letterSpacing: 1, textTransform: "uppercase" }}>{item.type}</div>
-          <div style={{ fontFamily: "Archivo Black", fontSize: 22, color: "var(--ink)", marginTop: 2 }}>{item.label}</div>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "var(--ink)", marginTop: 2 }}>{item.label}</div>
         </div>
 
         {!isOwned && (
           <div style={{ background: "var(--surface-2)", border: "1px solid rgba(253,251,246,0.06)", borderRadius: 12, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <span style={{ fontSize: 11, fontWeight: 800, color: "var(--ink-soft)", letterSpacing: 0.4, textTransform: "uppercase" }}>Cost</span>
-            <span style={{ fontFamily: "Archivo Black", fontSize: 16, color: item.color, display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontFamily: "var(--font-display)", fontSize: 16, color: item.color, display: "inline-flex", alignItems: "center", gap: 6 }}>
               <TicketIcon size={18} />
               {item.price} ticket{item.price === 1 ? "" : "s"}
             </span>
@@ -668,31 +742,24 @@ const CosmeticSheet = ({ item, canAfford, onClose, onConfirm }: { item: Cosmetic
         )}
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={cancelBtnStyle}
-          >
+          <Button variant="ghost" flex={1} onClick={close}>
             {isOwned ? "CLOSE" : "CANCEL"}
-          </button>
+          </Button>
           {!isOwned && (
-            <button
-              type="button"
+            <Button
+              flex={1.4}
               onClick={onBuy}
               disabled={!canAfford}
-              style={{
-                ...primaryBtnStyle,
-                background: canAfford ? item.color : "var(--surface-3)",
-                color: canAfford ? "var(--frame)" : "var(--ink-faint)",
-                cursor: canAfford ? "pointer" : "not-allowed",
-              }}
+              accent={item.color}
+              style={canAfford ? undefined : { background: "var(--surface-3)", color: "var(--ink-faint)" }}
             >
               EQUIP &amp; BUY
-            </button>
+            </Button>
           )}
         </div>
-      </SheetShell>
-    </>
+        </>
+        )}
+      </Sheet>
   );
 };
 
@@ -702,9 +769,9 @@ const BundleSheet = ({ bundle, phase, onClose, onConfirm }: { bundle: Bundle; ph
   const total = bundle.count + bundle.bonus;
   const accent = "#FFC931";
   return (
-    <>
-      <Backdrop onClick={phase === "processing" ? () => {} : onClose} />
-      <SheetShell accent={accent} ariaLabel={`Buy ${total} tickets for ${bundle.price}`}>
+      <Sheet onClose={phase === "processing" ? undefined : onClose} accent={accent} ariaLabel={`Buy ${total} tickets for ${bundle.price}`}>
+        {(close) => (
+        <>
         {/* Hero */}
         <div style={{ position: "relative", display: "flex", justifyContent: "center", marginBottom: 14 }}>
           <div
@@ -720,7 +787,7 @@ const BundleSheet = ({ bundle, phase, onClose, onConfirm }: { bundle: Bundle; ph
           >
             <TicketIcon size={48} />
             <div>
-              <div style={{ fontFamily: "Archivo Black", fontSize: 32, color: "var(--ink)", lineHeight: 1 }}>{total}</div>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 32, color: "var(--ink)", lineHeight: 1 }}>{total}</div>
               <div style={{ fontSize: 10, fontWeight: 800, color: accent, letterSpacing: 0.6, textTransform: "uppercase", marginTop: 2 }}>Tickets</div>
             </div>
           </div>
@@ -738,15 +805,10 @@ const BundleSheet = ({ bundle, phase, onClose, onConfirm }: { bundle: Bundle; ph
         <div style={{ display: "flex", gap: 10 }}>
           {phase === "confirm" ? (
             <>
-              <button type="button" onClick={onClose} style={cancelBtnStyle}>CANCEL</button>
-              <button
-                type="button"
-                onClick={onConfirm}
-                style={{ ...primaryBtnStyle, background: accent, color: "var(--frame)" }}
-                aria-label={`Pay ${bundle.price} for ${total} tickets`}
-              >
+              <Button variant="ghost" flex={1} onClick={close}>CANCEL</Button>
+              <Button flex={1.4} onClick={onConfirm} accent={accent} ariaLabel={`Pay ${bundle.price} for ${total} tickets`}>
                 PAY {bundle.price}
-              </button>
+              </Button>
             </>
           ) : (
             <div
@@ -759,7 +821,7 @@ const BundleSheet = ({ bundle, phase, onClose, onConfirm }: { bundle: Bundle; ph
                 border: "2px solid var(--frame)",
                 borderRadius: 12,
                 padding: "12px 0",
-                fontFamily: "Archivo Black",
+                fontFamily: "var(--font-display)",
                 fontSize: 14,
                 letterSpacing: 0.4,
                 textAlign: "center",
@@ -785,8 +847,9 @@ const BundleSheet = ({ bundle, phase, onClose, onConfirm }: { bundle: Bundle; ph
         <div style={{ marginTop: 10, textAlign: "center", fontSize: 10, fontWeight: 700, color: "var(--ink-faint)", letterSpacing: 0.4 }}>
           Prototype — no real charge
         </div>
-      </SheetShell>
-    </>
+        </>
+        )}
+      </Sheet>
   );
 };
 
@@ -809,18 +872,18 @@ const FeaturedSheet = ({ featured, canAfford, onClose, onConfirm }: { featured: 
     }, 480);
   };
   return (
-    <>
-      <Backdrop onClick={onClose} />
-      <SheetShell accent={featured.accent} ariaLabel={`Activate ${featured.title} for ${featured.price} tickets`}>
+      <Sheet onClose={onClose} accent={featured.accent} ariaLabel={`Activate ${featured.title} for ${featured.price} tickets`}>
+        {(close) => (
+        <>
         {bursting && <Confetti pieces={36} />}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
-          <div style={{ position: "relative", width: 92, height: 92, borderRadius: 22, background: `radial-gradient(circle, ${featured.accent}55, ${featured.accent}11 70%)`, border: `2px solid ${featured.accent}`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Archivo Black", fontSize: 38, color: featured.accent, boxShadow: `0 0 36px ${featured.accent}55` }}>
+          <div style={{ position: "relative", width: 92, height: 92, borderRadius: 22, background: `radial-gradient(circle, ${featured.accent}55, ${featured.accent}11 70%)`, border: `2px solid ${featured.accent}`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-display)", fontSize: 38, color: featured.accent, boxShadow: `0 0 36px ${featured.accent}55` }}>
             2×
           </div>
         </div>
         <div style={{ textAlign: "center", marginBottom: 12 }}>
           <div style={{ fontSize: 10, fontWeight: 900, color: featured.accent, letterSpacing: 1.6 }}>FEATURED · ENDS IN {featured.endsIn.toUpperCase()}</div>
-          <div style={{ fontFamily: "Archivo Black", fontSize: 26, color: "var(--ink)", marginTop: 4, letterSpacing: 0.4 }}>{featured.title}</div>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 26, color: "var(--ink)", marginTop: 4, letterSpacing: 0.4 }}>{featured.title}</div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-soft)", marginTop: 2 }}>{featured.sub}</div>
         </div>
 
@@ -842,32 +905,27 @@ const FeaturedSheet = ({ featured, canAfford, onClose, onConfirm }: { featured: 
                 color: "var(--ink)",
               }}
             >
-              <span style={{ width: 22, height: 22, borderRadius: 99, background: `${featured.accent}30`, color: featured.accent, display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "Archivo Black", fontSize: 13, flexShrink: 0 }}>✓</span>
+              <span style={{ width: 22, height: 22, borderRadius: 99, background: `${featured.accent}30`, color: featured.accent, display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-display)", fontSize: 13, flexShrink: 0 }}>✓</span>
               {b}
             </li>
           ))}
         </ul>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button type="button" onClick={onClose} style={cancelBtnStyle}>NOT NOW</button>
-          <button
-            type="button"
+          <Button variant="ghost" flex={1} onClick={close}>NOT NOW</Button>
+          <Button
+            flex={1.4}
             onClick={onActivate}
             disabled={!canAfford}
-            style={{
-              ...primaryBtnStyle,
-              background: canAfford ? featured.accent : "var(--surface-3)",
-              color: canAfford ? "var(--frame)" : "var(--ink-faint)",
-              cursor: canAfford ? "pointer" : "not-allowed",
-              display: "inline-flex",
-              gap: 6,
-            }}
+            accent={featured.accent}
+            style={canAfford ? undefined : { background: "var(--surface-3)", color: "var(--ink-faint)" }}
           >
             ACTIVATE — <TicketIcon size={14} />{featured.price}
-          </button>
+          </Button>
         </div>
-      </SheetShell>
-    </>
+        </>
+        )}
+      </Sheet>
   );
 };
 
@@ -886,23 +944,23 @@ const ShortfallSheet = ({ intent, haveTickets, onClose, onTopUp }: { intent: Spe
   const suggested = suggestBundleFor(shortfall);
   const suggestedIdx = BUNDLES.indexOf(suggested);
   return (
-    <>
-      <Backdrop onClick={onClose} />
-      <SheetShell accent="#FFC931" ariaLabel={`Need more tickets to buy ${itemLabel}`}>
+      <Sheet onClose={onClose} accent="#FFC931" ariaLabel={`Need more tickets to buy ${itemLabel}`}>
+        {(close) => (
+        <>
         <div style={{ textAlign: "center", marginBottom: 14 }}>
           <div style={{ fontSize: 26, marginBottom: 4 }}>🎟</div>
-          <div style={{ fontFamily: "Archivo Black", fontSize: 20, color: "var(--ink)" }}>Need {shortfall} more ticket{shortfall === 1 ? "" : "s"}</div>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--ink)" }}>Need {shortfall} more ticket{shortfall === 1 ? "" : "s"}</div>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", marginTop: 4 }}>You have {haveTickets} · {itemLabel} costs {need}</div>
         </div>
 
         <div style={{ background: "var(--surface-2)", border: "1.5px solid var(--maple-500)", borderRadius: 14, padding: "14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ flexShrink: 0, width: 56, height: 56, borderRadius: 12, background: "rgba(255,201,49,0.18)", border: "1px solid rgba(255,201,49,0.4)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
             <TicketIcon size={22} />
-            <span style={{ fontFamily: "Archivo Black", fontSize: 16, color: "var(--ink)" }}>{suggested.count + suggested.bonus}</span>
+            <span style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--ink)" }}>{suggested.count + suggested.bonus}</span>
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 10, fontWeight: 800, color: "var(--maple-500)", letterSpacing: 1, textTransform: "uppercase" }}>Quick top up</div>
-            <div style={{ fontFamily: "Archivo Black", fontSize: 14, color: "var(--ink)", marginTop: 2 }}>{suggested.count + suggested.bonus} tickets · {suggested.price}</div>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "var(--ink)", marginTop: 2 }}>{suggested.count + suggested.bonus} tickets · {suggested.price}</div>
             {suggested.bonus > 0 && (
               <div style={{ fontSize: 10, fontWeight: 700, color: "var(--leaf)", marginTop: 2 }}>Includes {suggested.bonus} bonus</div>
             )}
@@ -910,17 +968,14 @@ const ShortfallSheet = ({ intent, haveTickets, onClose, onTopUp }: { intent: Spe
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button type="button" onClick={onClose} style={cancelBtnStyle}>CANCEL</button>
-          <button
-            type="button"
-            onClick={() => onTopUp(suggestedIdx)}
-            style={{ ...primaryBtnStyle, background: "var(--maple-500)", color: "var(--frame)" }}
-          >
+          <Button variant="ghost" flex={1} onClick={close}>CANCEL</Button>
+          <Button flex={1.4} onClick={() => onTopUp(suggestedIdx)}>
             TOP UP
-          </button>
+          </Button>
         </div>
-      </SheetShell>
-    </>
+        </>
+        )}
+      </Sheet>
   );
 };
 
@@ -948,7 +1003,7 @@ const Snack = ({ label, showUndo, onUndo }: { label: string; showUndo: boolean; 
       overflow: "hidden",
     }}
   >
-    <span style={{ flex: 1, fontFamily: "Archivo Black", fontSize: 12, letterSpacing: 0.4 }}>{label}</span>
+    <span style={{ flex: 1, fontFamily: "var(--font-display)", fontSize: 12, letterSpacing: 0.4 }}>{label}</span>
     {showUndo && (
       <button
         type="button"
@@ -957,7 +1012,7 @@ const Snack = ({ label, showUndo, onUndo }: { label: string; showUndo: boolean; 
           background: "var(--maple-500)",
           color: "var(--frame)",
           border: "none",
-          fontFamily: "Archivo Black",
+          fontFamily: "var(--font-display)",
           fontSize: 11,
           letterSpacing: 0.6,
           padding: "5px 12px",
@@ -1033,42 +1088,10 @@ const TicketCountUp = ({ from, to, onDone }: { from: number; to: number; onDone:
     >
       <TicketIcon size={36} />
       <div>
-        <div style={{ fontFamily: "Archivo Black", fontSize: 24, color: "var(--maple-500)", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{v}</div>
+        <div style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--maple-500)", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{v}</div>
         <div style={{ fontSize: 10, fontWeight: 800, color: "var(--ink-faint)", letterSpacing: 0.8, textTransform: "uppercase", marginTop: 2 }}>Tickets</div>
       </div>
     </div>
   );
 };
 
-// ===== Shared button styles ===================================================
-
-const cancelBtnStyle: CSSProperties = {
-  flex: 1,
-  background: "transparent",
-  border: "2px solid var(--frame)",
-  color: "var(--ink)",
-  fontFamily: "Nunito",
-  fontWeight: 900,
-  fontSize: 14,
-  padding: "12px 0",
-  borderRadius: 12,
-  cursor: "pointer",
-  letterSpacing: 0.3,
-};
-
-const primaryBtnStyle: CSSProperties = {
-  flex: 1.4,
-  border: "2px solid var(--frame)",
-  fontFamily: "Nunito",
-  fontWeight: 900,
-  fontSize: 14,
-  padding: "12px 0",
-  borderRadius: 12,
-  cursor: "pointer",
-  letterSpacing: 0.3,
-  boxShadow: "0 4px 0 var(--frame)",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 6,
-};

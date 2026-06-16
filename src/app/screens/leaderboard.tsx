@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useProto } from "../state";
-import { ASSETS, InfoIcon, Phone, PixelImg, TabBar } from "../shared";
+import { ASSETS, BackButton, InfoButton, InfoIcon, Phone, PixelImg, TabBar, ToastButton } from "../shared";
 
 // Pre-generated medal art replaces the synthesized SVG medal.
 const BigMedal = ({ size = 78 }: { color?: string; size?: number }) => (
@@ -11,7 +11,7 @@ const BigMedal = ({ size = 78 }: { color?: string; size?: number }) => (
 
 const ChestGlyph = ({ rank }: { rank: number }) => {
   const src = rank <= 5 ? ASSETS.chestRainbow : rank <= 20 ? ASSETS.chestPurple : ASSETS.chestBrown;
-  return <PixelImg src={src} size={22} alt="chest" />;
+  return <PixelImg src={src} size={24} alt="chest" />;
 };
 
 type Player = { rank: number; name: string; pts: number; color: string; avatar?: string; you?: boolean };
@@ -27,14 +27,14 @@ const LeaderRow = ({ p }: { p: Player }) => {
   const rankColor = p.rank === 1 ? "var(--maple-500)" : p.rank === 2 ? "#bfc7d0" : p.rank === 3 ? "#cd7f32" : "var(--ink-faint)";
   const ptsColor = p.you ? "var(--maple-500)" : "var(--ink)";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 22px", color: "var(--ink)" }}>
-      <div style={{ width: 28, fontFamily: "var(--font-display)", fontSize: 14, color: rankColor, textAlign: "center", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{p.rank}</div>
-      <PixelImg src={av} size={44} alt="" />
-      <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 16px", color: "var(--ink)" }}>
+      <div style={{ width: 22, fontFamily: "var(--font-display)", fontSize: 13, color: rankColor, textAlign: "center", flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{p.rank}</div>
+      <PixelImg src={av} size={40} alt="" />
+      <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
         {!p.you && <ChestGlyph rank={p.rank} />}
-        <PixelImg src={ASSETS.trophy} size={22} alt="" />
-        <span style={{ fontFamily: "var(--font-display)", fontSize: 14, color: ptsColor, fontVariantNumeric: "tabular-nums", minWidth: 38, textAlign: "right" }}>{p.pts.toLocaleString()}</span>
+        <PixelImg src={ASSETS.trophy} size={24} alt="" />
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 13, color: ptsColor, fontVariantNumeric: "tabular-nums", minWidth: 36, textAlign: "right" }}>{p.pts.toLocaleString()}</span>
       </div>
     </div>
   );
@@ -58,7 +58,7 @@ export const LeaderboardScreen = () => {
     { rank: 11, name: "bk.pixels", pts: 920, color: "#5db8ff" },
     { rank: 12, name: "tim.h", pts: 880, color: "#3dd17a" },
   ];
-  const you: Player = { rank: 40, name: "celestine.ejiofor", pts: 0, color: "#3dd17a", you: true };
+  const you: Player = { rank: 40, name: proto.username || "you", pts: 0, color: "#3dd17a", you: true };
 
   return (
     <Phone statusDark>
@@ -96,9 +96,7 @@ export const LeaderboardScreen = () => {
       />
 
       <div style={{ position: "absolute", top: 50, left: 0, right: 0, padding: "0 14px", display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--ink)", zIndex: 2 }}>
-        <button aria-label="Back to Compete" onClick={() => proto.goto("pass", { back: true })} style={{ background: "transparent", border: "none", padding: 6, cursor: "pointer", color: "var(--ink)", display: "flex", alignItems: "center" }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </button>
+        <BackButton label="Back to Compete" onClick={() => proto.goto("pass", { back: true })} />
         <div style={{ flex: 1 }} />
         <button type="button" aria-label="About leagues" onClick={() => proto.goto("leagues")} style={{ background: "rgba(253, 251, 246, 0.08)", border: "1.5px solid rgba(253, 251, 246, 0.25)", borderRadius: 99, width: 30, height: 30, padding: 0, cursor: "pointer", color: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "center" }}><InfoIcon size={16} /></button>
       </div>
@@ -119,7 +117,7 @@ export const LeaderboardScreen = () => {
             { id: "league" as const, label: "Your League" },
             { id: "friends" as const, label: "Friends" },
           ].map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, background: "transparent", border: "none", padding: "14px 0 12px", fontFamily: "Nunito", fontSize: 15, fontWeight: tab === t.id ? 900 : 700, color: tab === t.id ? "var(--ink)" : "var(--ink-faint)", borderBottom: tab === t.id ? "2.5px solid var(--maple-500)" : "2.5px solid transparent", cursor: "pointer" }}>
+            <button key={t.id} onClick={() => setTab(t.id)} style={{ flex: 1, background: "transparent", border: "none", padding: "14px 0 12px", fontFamily: "var(--font-body)", fontSize: 15, fontWeight: tab === t.id ? 900 : 700, color: tab === t.id ? "var(--ink)" : "var(--ink-faint)", borderBottom: tab === t.id ? "2.5px solid var(--maple-500)" : "2.5px solid transparent", cursor: "pointer" }}>
               {t.label}
             </button>
           ))}
@@ -131,7 +129,7 @@ export const LeaderboardScreen = () => {
               <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase" }}>Position</span>
               <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
                 Points
-                <span aria-hidden="true" style={{ color: "var(--ink-faint)", display: "inline-flex" }}><InfoIcon size={14} /></span>
+                <InfoButton title="Points" text="Points are the trophies you earn from quizzes and missions during this league period. The more points you score, the higher you climb — top finishers get promoted to the next league and win reward chests." size={18} />
               </span>
             </div>
             <div style={{ flex: 1, overflow: "auto", scrollbarWidth: "none" }}>
@@ -139,7 +137,7 @@ export const LeaderboardScreen = () => {
               {/* "You" row pinned to the bottom — uses the maple-tinted highlight
                   that the results screen uses for the player's row, so the two
                   leaderboards in the app share a visual language. */}
-              <div style={{ position: "sticky", bottom: 0, background: "var(--maple-100)", borderTop: "1.5px solid var(--maple-500)" }}>
+              <div data-coach="leaderboard-you" style={{ position: "sticky", bottom: 0, background: "#191507", borderTop: "1.5px solid var(--maple-500)", boxShadow: "0 -10px 18px rgba(0, 0, 0, 0.45)" }}>
                 <LeaderRow p={you} />
               </div>
             </div>
@@ -157,19 +155,20 @@ export const LeaderboardScreen = () => {
                 <path d="M14 14c.5-1.8 1.8-3 3-3s2.5 1.2 3 3" stroke="var(--maple-500)" strokeWidth="2" fill="none" strokeLinecap="round" />
               </svg>
             </div>
-            <div style={{ fontFamily: "Archivo Black", fontSize: 18, color: "var(--ink)", letterSpacing: 0.4 }}>No friends yet</div>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--ink)", letterSpacing: 0.4 }}>No friends yet</div>
             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink-soft)", marginTop: 8, lineHeight: 1.45, maxWidth: 260 }}>
               Add friends to see their scores next to yours and compete for bragging rights.
             </div>
-            <button
-              type="button"
+            <ToastButton
+              ariaLabel="Invite friends"
+              toast="Friend invites are coming soon!"
               className="pressable"
               style={{
                 marginTop: 22,
                 background: "var(--maple-500)",
                 color: "var(--frame)",
                 border: "2px solid var(--frame)",
-                fontFamily: "Nunito",
+                fontFamily: "var(--font-body)",
                 fontWeight: 900,
                 fontSize: 13,
                 padding: "10px 20px",
@@ -178,12 +177,9 @@ export const LeaderboardScreen = () => {
                 boxShadow: "0 3px 0 var(--frame)",
                 cursor: "pointer",
               }}
-              onClick={() => {
-                // No-op for prototype — inviting friends is out of scope.
-              }}
             >
               INVITE FRIENDS
-            </button>
+            </ToastButton>
           </div>
         )}
       </div>

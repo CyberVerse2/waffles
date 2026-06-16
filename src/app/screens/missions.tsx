@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useProto } from "../state";
-import { ASSETS, Phone, PixelImg, TabBar } from "../shared";
+import { ASSETS, AssetWell, BackButton, InfoButton, Phone, PixelImg, TabBar, TicketIcon, ToastButton } from "../shared";
 
 export const MissionsScreen = () => {
   const proto = useProto();
@@ -34,19 +34,17 @@ export const MissionsScreen = () => {
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 160, background: "radial-gradient(ellipse at 50% 0%, rgba(255,201,49,.18), transparent 70%)" }} />
 
       <div style={{ position: "absolute", top: 6, left: 0, right: 0, padding: "0 14px", display: "flex", alignItems: "center", color: "#fff", gap: 8 }}>
-        <button aria-label="Back to Compete" onClick={() => proto.goto("pass", { back: true })} style={{ background: "transparent", border: "none", padding: 6, cursor: "pointer", color: "#fff", display: "flex", alignItems: "center" }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </button>
-        <div style={{ flex: 1, fontFamily: "Archivo Black", fontSize: 18, letterSpacing: 0.5, textAlign: "center" }}>MISSIONS</div>
-        <div style={{ width: 30, height: 30, borderRadius: 99, border: "1.5px solid rgba(255,255,255,.25)", color: "rgba(255,255,255,.5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800 }}>i</div>
+        <BackButton label="Back to Compete" onClick={() => proto.goto("pass", { back: true })} />
+        <div style={{ flex: 1, fontFamily: "var(--font-display)", fontSize: 18, letterSpacing: 0.5, textAlign: "center" }}>MISSIONS</div>
+        <InfoButton title="Missions" text="Complete missions to earn rewards. Daily missions refresh every 24 hours and grant XP toward your level. Partner offers are sponsored tasks that pay out bonus tickets." />
       </div>
 
       <div style={{ position: "absolute", top: 96, left: 14, right: 14, background: "#0F0F10", borderRadius: 99, padding: 4, border: "1px solid rgba(255,255,255,.06)", display: "flex", gap: 2 }}>
-        <button onClick={() => setTab("daily")} style={{ flex: 1, background: tab === "daily" ? "#FFC931" : "transparent", color: tab === "daily" ? "#1e1e1e" : "rgba(255,255,255,.6)", border: "none", padding: "9px 10px", borderRadius: 99, fontFamily: "Archivo Black", fontSize: 11, letterSpacing: 0.4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+        <button onClick={() => setTab("daily")} style={{ flex: 1, background: tab === "daily" ? "#FFC931" : "transparent", color: tab === "daily" ? "#1e1e1e" : "rgba(255,255,255,.6)", border: "none", padding: "9px 10px", borderRadius: 99, fontFamily: "var(--font-display)", fontSize: 11, letterSpacing: 0.4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <span>DAILY</span>
           <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 99, background: tab === "daily" ? "rgba(0,0,0,.15)" : "rgba(255,255,255,.1)" }}>{dailyMissions.length}</span>
         </button>
-        <button onClick={() => setTab("partner")} style={{ flex: 1, background: tab === "partner" ? "#00CFF2" : "transparent", color: tab === "partner" ? "#1e1e1e" : "rgba(255,255,255,.6)", border: "none", padding: "9px 10px", borderRadius: 99, fontFamily: "Archivo Black", fontSize: 11, letterSpacing: 0.4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+        <button onClick={() => setTab("partner")} style={{ flex: 1, background: tab === "partner" ? "#00CFF2" : "transparent", color: tab === "partner" ? "#1e1e1e" : "rgba(255,255,255,.6)", border: "none", padding: "9px 10px", borderRadius: 99, fontFamily: "var(--font-display)", fontSize: 11, letterSpacing: 0.4, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
           <span>PARTNERS</span>
           <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 99, background: tab === "partner" ? "rgba(0,0,0,.15)" : "rgba(255,255,255,.1)" }}>{partnerMissions.length}</span>
         </button>
@@ -55,8 +53,10 @@ export const MissionsScreen = () => {
       <div style={{ position: "absolute", top: 148, left: 0, right: 0, bottom: 80, overflow: "auto", scrollbarWidth: "none", padding: "10px 14px 24px" }}>
         {tab === "daily" && (
           <>
-            <div style={{ background: "linear-gradient(180deg, rgba(255,201,49,.14), rgba(255,201,49,.04))", border: "1px solid rgba(255,201,49,.25)", borderRadius: 14, padding: "10px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-              <PixelImg src={ASSETS.trophy} size={48} alt="" />
+            <div data-coach="missions-daily" style={{ background: "linear-gradient(180deg, rgba(255,201,49,.14), rgba(255,201,49,.04))", border: "1px solid rgba(255,201,49,.25)", borderRadius: 14, padding: "10px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
+              <AssetWell size={76} accent="var(--maple-500)" radius={16}>
+                <PixelImg src={ASSETS.trophy} size={62} alt="" />
+              </AssetWell>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--ink)", letterSpacing: 0.3 }}>Earn up to {totalDailyXP} XP today</div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-mute)", marginTop: 2 }}>Resets in 17h 42m</div>
@@ -69,7 +69,9 @@ export const MissionsScreen = () => {
                 const done = m.p >= m.tot;
                 return (
                   <div key={i} style={{ background: "var(--surface-1)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 12, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, opacity: done ? 0.65 : 1 }}>
-                    <PixelImg src={m.icon} size={44} alt="" style={{ flexShrink: 0 }} />
+                    <AssetWell size={60} accent={m.icon === ASSETS.flame ? "var(--berry)" : m.icon === ASSETS.trophy ? "var(--maple-500)" : "var(--leaf)"} radius={14}>
+                      <PixelImg src={m.icon} size={46} alt="" />
+                    </AssetWell>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: "#fff", lineHeight: 1.3 }}>{m.t}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
@@ -92,14 +94,11 @@ export const MissionsScreen = () => {
         {tab === "partner" && (
           <>
             <div style={{ background: "linear-gradient(180deg, rgba(0,207,242,.12), rgba(0,207,242,.03))", border: "1px solid rgba(0,207,242,.25)", borderRadius: 14, padding: "12px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(0,207,242,.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg width="22" height="16" viewBox="0 0 22 14" fill="none">
-                  <path d="M2 3a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v2a2 2 0 0 0 0 4v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V9a2 2 0 0 0 0-4V3z" fill="#00CFF2" />
-                  <path d="M9 3v8" stroke="#0F0F10" strokeWidth="1.2" strokeDasharray="1.5 1.5" />
-                </svg>
-              </div>
+              <AssetWell size={46} accent="var(--leaf)" radius={12}>
+                <TicketIcon size={24} />
+              </AssetWell>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: "Archivo Black", fontSize: 13, color: "#fff", letterSpacing: 0.3 }}>Earn up to {totalPartnerTickets} 🎟 from offers</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "#fff", letterSpacing: 0.3 }}>Earn up to {totalPartnerTickets} 🎟 from offers</div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,.55)", marginTop: 2 }}>Sponsored by our partners · Verified rewards</div>
               </div>
             </div>
@@ -107,11 +106,11 @@ export const MissionsScreen = () => {
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {partnerMissions.map((m, i) => (
                 <div key={i} style={{ background: "#0F0F10", border: "1px solid rgba(255,255,255,.06)", borderRadius: 12, padding: "12px 12px", display: "flex", alignItems: "center", gap: 12, position: "relative" }}>
-                  {m.hot && <div style={{ position: "absolute", top: -6, right: 10, background: "#FC1919", color: "#fff", fontFamily: "Archivo Black", fontSize: 8, letterSpacing: 0.5, padding: "2px 6px", borderRadius: 4, boxShadow: "0 2px 0 rgba(0,0,0,.3)" }}>HOT</div>}
-                  <div style={{ width: 42, height: 42, borderRadius: 10, background: m.brandColor, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Archivo Black", fontSize: 20, color: "#fff", flexShrink: 0, boxShadow: "inset 0 -2px 0 rgba(0,0,0,.2)" }}>{m.glyph}</div>
+                  {m.hot && <div style={{ position: "absolute", top: -6, right: 10, background: "#FC1919", color: "#fff", fontFamily: "var(--font-display)", fontSize: 8, letterSpacing: 0.5, padding: "2px 6px", borderRadius: 4, boxShadow: "0 2px 0 rgba(0,0,0,.3)" }}>HOT</div>}
+                  <div style={{ width: 42, height: 42, borderRadius: 10, background: m.brandColor, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-display)", fontSize: 20, color: "#fff", flexShrink: 0, boxShadow: "inset 0 -2px 0 rgba(0,0,0,.2)" }}>{m.glyph}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={{ fontFamily: "Archivo Black", fontSize: 12, color: "#fff", letterSpacing: 0.3 }}>{m.brand}</div>
+                      <div style={{ fontFamily: "var(--font-display)", fontSize: 12, color: "#fff", letterSpacing: 0.3 }}>{m.brand}</div>
                       {/* Clear "Sponsored" pill so the partnership is unmistakable
                           and never reads as a regular in-app reward. */}
                       <span
@@ -138,14 +137,11 @@ export const MissionsScreen = () => {
                     </div>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(0,207,242,.15)", border: "1px solid rgba(0,207,242,.35)", color: "#00CFF2", padding: "4px 8px", borderRadius: 8, fontFamily: "Archivo Black", fontSize: 10 }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(0,207,242,.15)", border: "1px solid rgba(0,207,242,.35)", color: "#00CFF2", padding: "4px 8px", borderRadius: 8, fontFamily: "var(--font-display)", fontSize: 10 }}>
                       +{m.tickets}
-                      <svg width="11" height="9" viewBox="0 0 22 14" fill="none">
-                        <path d="M2 3a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v2a2 2 0 0 0 0 4v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V9a2 2 0 0 0 0-4V3z" fill="#00CFF2" />
-                        <path d="M9 3v8" stroke="#0F0F10" strokeWidth="1" strokeDasharray="1.5 1.5" />
-                      </svg>
+                      <TicketIcon size={14} />
                     </span>
-                    <button style={{ background: "#fff", color: "#1e1e1e", border: "none", padding: "5px 10px", borderRadius: 7, fontFamily: "Archivo Black", fontSize: 9, letterSpacing: 0.4, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 2px 0 rgba(0,0,0,.3)" }}>{m.cta} →</button>
+                    <ToastButton toast={`${m.brand} offer — opening soon`} ariaLabel={`${m.cta} ${m.brand}`} style={{ background: "#fff", color: "#1e1e1e", border: "none", padding: "5px 10px", borderRadius: 7, fontFamily: "var(--font-display)", fontSize: 9, letterSpacing: 0.4, cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 2px 0 rgba(0,0,0,.3)" }}>{m.cta} →</ToastButton>
                   </div>
                 </div>
               ))}

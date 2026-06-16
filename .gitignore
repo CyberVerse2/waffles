@@ -1,6 +1,11 @@
 .next
 node_modules
+out
 dist
-*.log
 .env*
 !.env.example
+*.tsbuildinfo
+.vercel
+# Regeneratable source art (raw GPT Image 2 PNGs); only optimized/*.webp ships.
+# Kept out of the build context so deploys stay small/fast.
+design-assets/

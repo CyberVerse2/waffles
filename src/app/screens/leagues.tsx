@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useProto } from "../state";
-import { ASSETS, Phone, PixelImg, TabBar } from "../shared";
+import { ASSETS, BackButton, Phone, PixelImg, TabBar } from "../shared";
 
 const TIERS = [
   { key: "apprentice1", label: "APPRENTICE I", color: "#cd7f32" },
@@ -33,7 +33,7 @@ const BigMedal = ({ color = "#cd7f32", size = 78 }: { color?: string; size?: num
 const Pill = ({ icon, color, value }: { icon: ReactNode; color: string; value: number }) => (
   <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "var(--surface-2)", border: "1px solid rgba(253, 251, 246, 0.06)", borderRadius: 99, padding: "5px 8px", fontSize: 13, fontWeight: 800, color: "var(--ink)" }}>
     <span style={{ color, fontSize: 14 }}>{icon}</span>
-    <span style={{ fontFamily: "Archivo Black", fontVariantNumeric: "tabular-nums" }}>{value.toLocaleString()}</span>
+    <span style={{ fontFamily: "var(--font-display)", fontVariantNumeric: "tabular-nums" }}>{value.toLocaleString()}</span>
   </div>
 );
 
@@ -56,6 +56,7 @@ type Tier = (typeof TIERS)[number] & {
 const LeagueCard = ({ tier }: { tier: Tier }) => {
   return (
     <div
+      data-coach={tier.current ? "leagues-current" : undefined}
       style={{
         background: "var(--surface-1)",
         borderRadius: 14,
@@ -79,7 +80,7 @@ const LeagueCard = ({ tier }: { tier: Tier }) => {
               borderRadius: "0 6px 6px 0",
               fontSize: 11,
               fontWeight: 800,
-              fontFamily: "Nunito",
+              fontFamily: "var(--font-body)",
               boxShadow: "0 2px 0 rgba(0, 0, 0, 0.3)",
             }}
           >
@@ -98,7 +99,7 @@ const LeagueCard = ({ tier }: { tier: Tier }) => {
           textAlign: "center",
         }}
       >
-        <div style={{ fontFamily: "Archivo Black", fontSize: 18, letterSpacing: 0.5, color: "var(--ink)", marginBottom: 10 }}>{tier.label}</div>
+        <div style={{ fontFamily: "var(--font-display)", fontSize: 18, letterSpacing: 0.5, color: "var(--ink)", marginBottom: 10 }}>{tier.label}</div>
 
         {tier.rewards.map((r, i) => (
           <div
@@ -173,10 +174,8 @@ export const LeaguesScreen = () => {
       />
 
       <div style={{ position: "absolute", top: 50, left: 0, right: 0, padding: "0 14px", display: "flex", alignItems: "center", color: "var(--ink)", zIndex: 2 }}>
-        <button aria-label="Back to leaderboard" onClick={() => proto.goto("leaderboard", { back: true })} style={{ background: "transparent", border: "none", padding: 6, cursor: "pointer", color: "var(--ink)" }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </button>
-        <div style={{ flex: 1, textAlign: "center", fontFamily: "Archivo Black", fontSize: 18, letterSpacing: 1, marginRight: 34 }}>LEAGUES</div>
+        <BackButton label="Back to leaderboard" onClick={() => proto.goto("leaderboard", { back: true })} />
+        <div style={{ flex: 1, textAlign: "center", fontFamily: "var(--font-display)", fontSize: 18, letterSpacing: 1, marginRight: 34 }}>LEAGUES</div>
       </div>
 
       <div style={{ position: "absolute", top: 90, left: 0, right: 0, bottom: 64, padding: "0 16px 16px", overflow: "auto", scrollbarWidth: "none" }}>

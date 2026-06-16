@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useProto } from "../state";
-import { ASSETS, Phone, PixelImg, TabBar, TopHeader } from "../shared";
+import { ASSETS, AssetWell, Phone, PixelImg, TabBar, TicketIcon, TopHeader } from "../shared";
 
 const TierMedal = ({ color = "#cd7f32", size = 28, state = "passed" }: { color?: string; size?: number; state?: "current" | "locked" | "passed" }) => {
   const dim = state === "locked" ? 0.35 : 1;
@@ -32,10 +33,20 @@ const REWARD_PRESETS: { free: Reward; premium: Reward }[] = [
   { free: { type: "cosmetic", label: "Emote" }, premium: { type: "cosmetic", label: "Avatar" } },
 ];
 
-const REWARD_PALETTE: Record<RewardType, { bg: string; fg: string; glyph: string }> = {
-  xp:       { bg: "rgba(255, 201, 49, 0.10)", fg: "var(--maple-500)", glyph: "XP" },
-  ticket:   { bg: "rgba(0, 207, 242, 0.10)",  fg: "var(--leaf)",      glyph: "🎟" },
-  cosmetic: { bg: "rgba(251, 114, 255, 0.10)", fg: "var(--berry)",     glyph: "★" },
+const REWARD_PALETTE: Record<RewardType, { bg: string; fg: string }> = {
+  xp:       { bg: "rgba(255, 201, 49, 0.10)", fg: "var(--maple-500)" },
+  ticket:   { bg: "rgba(0, 207, 242, 0.10)",  fg: "var(--leaf)" },
+  cosmetic: { bg: "rgba(251, 114, 255, 0.10)", fg: "var(--berry)" },
+};
+
+const RewardAsset = ({ reward }: { reward: Reward }) => {
+  if (reward.type === "xp") {
+    return <PixelImg src={ASSETS.xpGem} size={28} alt="" />;
+  }
+  if (reward.type === "ticket") {
+    return <TicketIcon size={24} />;
+  }
+  return <PixelImg src={ASSETS.vipStar} size={28} alt="" />;
 };
 
 // One reward chip — keeps the reward visible in every state. Claimed cells
@@ -45,10 +56,12 @@ const PassRewardCell = ({
   reward,
   state,
   premium,
+  onClick,
 }: {
   reward: Reward;
   state: "claimed" | "current" | "locked";
   premium?: boolean;
+  onClick?: () => void;
 }) => {
   const palette = REWARD_PALETTE[reward.type];
   const isClaimed = state === "claimed";
@@ -56,11 +69,25 @@ const PassRewardCell = ({
   const isLocked = state === "locked";
   return (
     <div
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
       style={{
         flex: 1,
         minWidth: 0,
         height: 56,
         borderRadius: 12,
+        cursor: onClick ? "pointer" : undefined,
         background: palette.bg,
         border: isCurrent
           ? `1.5px solid ${palette.fg}`
@@ -77,27 +104,13 @@ const PassRewardCell = ({
         color: "var(--ink)",
       }}
     >
-      <div
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 8,
-          background: "rgba(0, 0, 0, 0.25)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontFamily: "Archivo Black",
-          fontSize: 16,
-          color: palette.fg,
-          flexShrink: 0,
-        }}
-      >
-        {palette.glyph}
-      </div>
+      <AssetWell size={38} accent={palette.fg} radius={9}>
+        <RewardAsset reward={reward} />
+      </AssetWell>
       <div style={{ minWidth: 0, flex: 1 }}>
         <div
           style={{
-            fontFamily: "Archivo Black",
+            fontFamily: "var(--font-display)",
             fontSize: 11,
             color: "var(--ink)",
             letterSpacing: 0.2,
@@ -126,7 +139,7 @@ const PassRewardCell = ({
             borderRadius: 99,
             background: "var(--leaf)",
             color: "var(--frame)",
-            fontFamily: "Archivo Black",
+            fontFamily: "var(--font-display)",
             fontSize: 11,
             display: "flex",
             alignItems: "center",
@@ -146,7 +159,7 @@ const PassRewardCell = ({
             right: -6,
             background: "var(--maple-500)",
             color: "var(--frame)",
-            fontFamily: "Archivo Black",
+            fontFamily: "var(--font-display)",
             fontSize: 9,
             padding: "2px 6px",
             borderRadius: 99,
@@ -175,7 +188,7 @@ const PassRewardCell = ({
             justifyContent: "center",
           }}
         >
-          🔒
+          <PixelImg src={ASSETS.lock} size={12} alt="" style={{ filter: "none" }} />
         </div>
       )}
     </div>
@@ -185,6 +198,19 @@ const PassRewardCell = ({
 export const CompeteScreen = () => {
   const proto = useProto();
   const tickets = proto.tickets;
+  const [freeClaimed, setFreeClaimed] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const flash = (msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 2200);
+  };
+  const claimFreeReward = (reward: Reward) => {
+    if (freeClaimed) return;
+    if (reward.type === "ticket") proto.update((s) => ({ tickets: s.tickets + 1 }));
+    else if (reward.type === "xp") proto.update((s) => ({ xp: s.xp + 50 }));
+    setFreeClaimed(true);
+    flash(reward.type === "cosmetic" ? "Cosmetic unlocked!" : `Claimed ${reward.label}`);
+  };
   const passLevel = 7;
   const passXp = 340;
   const passXpNext = 500;
@@ -229,7 +255,7 @@ export const CompeteScreen = () => {
       <TopHeader tickets={tickets} title="COMPETE" />
 
       <div style={{ position: "absolute", top: 12, left: 0, right: 0, bottom: 80, overflow: "auto", display: "flex", flexDirection: "column", scrollbarWidth: "none" }}>
-        <div style={{ padding: "10px 14px 0", display: "flex", gap: 3, alignItems: "center", justifyContent: "center" }}>
+        <div data-coach="compete-ladder" style={{ padding: "10px 14px 0", display: "flex", gap: 3, alignItems: "center", justifyContent: "center" }}>
           {ladder.map((t, i) => {
             const isCurrent = i === currentIdx;
             const locked = i > currentIdx;
@@ -239,29 +265,31 @@ export const CompeteScreen = () => {
 
         <div style={{ padding: "12px 16px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontFamily: "Archivo Black", fontSize: 22, color: "#fff", letterSpacing: 0.5, lineHeight: 1 }}>{ladder[currentIdx].label}</div>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "#fff", letterSpacing: 0.5, lineHeight: 1 }}>{ladder[currentIdx].label}</div>
             <div style={{ display: "flex", gap: 10, marginTop: 6, fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,.65)", flexWrap: "nowrap", whiteSpace: "nowrap" }}>
               <span style={{ color: "#FFC931", display: "inline-flex", alignItems: "center", gap: 3 }}>🏆 {score}</span>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>⏱ Ends in {seasonEnd}</span>
             </div>
           </div>
-          <button onClick={() => proto.goto("leaderboard")} style={{ background: "#fff", color: "#1e1e1e", border: "none", padding: "9px 14px", borderRadius: 99, fontFamily: "Nunito", fontWeight: 800, fontSize: 13, letterSpacing: 0.1, boxShadow: "0 3px 0 rgba(0,0,0,.3)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>See ranking</button>
+          <button onClick={() => proto.goto("leaderboard")} style={{ background: "#fff", color: "#1e1e1e", border: "none", padding: "9px 14px", borderRadius: 99, fontFamily: "var(--font-body)", fontWeight: 800, fontSize: 13, letterSpacing: 0.1, boxShadow: "0 3px 0 rgba(0,0,0,.3)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>See ranking</button>
         </div>
 
         <div style={{ margin: "0 16px", background: "rgba(168,63,184,.65)", borderRadius: 10, padding: "8px 12px", display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 800, color: "#fff" }}>
-          <span style={{ fontFamily: "Archivo Black", fontSize: 12, color: "#00CFF2" }}>↓{safeZone}</span>
+          <span style={{ fontFamily: "var(--font-display)", fontSize: 12, color: "#00CFF2" }}>↓{safeZone}</span>
           <span>You are currently in the safe zone.</span>
         </div>
 
         <button onClick={() => proto.goto("missions")} style={{ margin: "12px 16px 0", background: "#0F0F10", borderRadius: 14, padding: "12px 14px", border: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", gap: 12, cursor: "pointer", textAlign: "left", width: "auto" }}>
-          <div style={{ width: 42, height: 42, borderRadius: 10, background: "linear-gradient(180deg, rgba(255,201,49,.18), rgba(255,201,49,.06))", border: "1px solid rgba(255,201,49,.3)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, position: "relative" }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-              <path d="M9 11.5l2 2 4-4M5 5h14a1 1 0 0 1 1 1v13l-4-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" stroke="#FFC931" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="rgba(255,201,49,.1)" />
-            </svg>
-            <div style={{ position: "absolute", top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 99, background: "#FC1919", color: "#fff", fontFamily: "Archivo Black", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px", boxShadow: "0 2px 0 rgba(0,0,0,.3)" }}>7</div>
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <AssetWell size={48} accent="var(--maple-500)" radius={12}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <path d="M9 11.5l2 2 4-4M5 5h14a1 1 0 0 1 1 1v13l-4-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" stroke="#FFC931" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="rgba(255,201,49,.1)" />
+              </svg>
+            </AssetWell>
+            <div style={{ position: "absolute", top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 99, background: "#FC1919", color: "#fff", fontFamily: "var(--font-display)", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px", boxShadow: "0 2px 0 rgba(0,0,0,.3)" }}>7</div>
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: "Archivo Black", fontSize: 14, color: "#fff", letterSpacing: 0.4 }}>MISSIONS</div>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 14, color: "#fff", letterSpacing: 0.4 }}>MISSIONS</div>
             <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.55)", marginTop: 2 }}>3 daily · 4 partner offers</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -273,7 +301,7 @@ export const CompeteScreen = () => {
         {/* Season Pass — header with title, countdown, and current tier. */}
         <div style={{ margin: "20px 16px 0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontFamily: "Archivo Black", fontSize: 20, color: "var(--ink)", letterSpacing: 1, lineHeight: 1 }}>SEASON PASS</div>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--ink)", letterSpacing: 1, lineHeight: 1 }}>SEASON PASS</div>
             <div style={{ fontSize: 11, fontWeight: 800, color: "var(--ink-soft)", marginTop: 4, display: "inline-flex", alignItems: "center", gap: 5 }}>
               <span>⏱</span> Ends in 4d 16h
             </div>
@@ -288,7 +316,7 @@ export const CompeteScreen = () => {
               flexShrink: 0,
             }}
           >
-            <div style={{ fontFamily: "Archivo Black", fontSize: 16, color: "var(--maple-500)", lineHeight: 1 }}>{passLevel}</div>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--maple-500)", lineHeight: 1 }}>{passLevel}</div>
             <div style={{ fontSize: 9, fontWeight: 800, color: "var(--ink-faint)", letterSpacing: 0.5, textTransform: "uppercase", marginTop: 2 }}>Tier</div>
           </div>
         </div>
@@ -297,17 +325,17 @@ export const CompeteScreen = () => {
         <div style={{ margin: "10px 16px 0", background: "var(--surface-1)", border: "1px solid rgba(253, 251, 246, 0.06)", borderRadius: 12, padding: "10px 12px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
             <span style={{ fontSize: 11, fontWeight: 800, color: "var(--ink-soft)" }}>Next tier in</span>
-            <span style={{ fontFamily: "Archivo Black", fontSize: 11, color: "var(--ink)" }}>{passXp} / {passXpNext} XP</span>
+            <span style={{ fontFamily: "var(--font-display)", fontSize: 11, color: "var(--ink)" }}>{passXp} / {passXpNext} XP</span>
           </div>
           <div style={{ height: 8, borderRadius: 99, background: "rgba(253, 251, 246, 0.06)", overflow: "hidden" }}>
             <div style={{ width: `${passPct}%`, height: "100%", background: "linear-gradient(90deg, var(--berry), var(--maple-500))", borderRadius: 99 }} />
           </div>
         </div>
 
-        {/* VIP upsell — full-width primary CTA so it doesn't fight with the
-            progress bar for attention. The benefit copy makes the value clear
-            instead of just labelling the button "ACTIVATE VIP". */}
+        {/* VIP upsell — routes to the Shop where purchases actually happen. */}
         <button
+          type="button"
+          onClick={() => proto.goto("shop")}
           style={{
             margin: "10px 16px 0",
             background: "linear-gradient(180deg, var(--maple-500), var(--maple-400))",
@@ -315,7 +343,7 @@ export const CompeteScreen = () => {
             border: "2px solid var(--frame)",
             padding: "12px 14px",
             borderRadius: 14,
-            fontFamily: "Nunito",
+            fontFamily: "var(--font-body)",
             fontWeight: 900,
             fontSize: 14,
             letterSpacing: 0.2,
@@ -329,7 +357,7 @@ export const CompeteScreen = () => {
         >
           <PixelImg src={ASSETS.vipStar} size={26} alt="" />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: "Archivo Black", fontSize: 14, lineHeight: 1, letterSpacing: 0.4 }}>UNLOCK VIP REWARDS</div>
+            <div style={{ fontFamily: "var(--font-display)", fontSize: 14, lineHeight: 1, letterSpacing: 0.4 }}>UNLOCK VIP REWARDS</div>
             <div style={{ fontSize: 11, fontWeight: 700, marginTop: 2, opacity: 0.75 }}>Claim every premium reward this season</div>
           </div>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -346,7 +374,7 @@ export const CompeteScreen = () => {
 
         <div style={{ padding: "0 16px 16px" }}>
           {track.slice(passLevel - 3, passLevel + 5).map((row, i, arr) => {
-            const freeState: "claimed" | "current" | "locked" = row.claimed ? "claimed" : row.current ? "current" : "locked";
+            const freeState: "claimed" | "current" | "locked" = row.claimed || (row.current && freeClaimed) ? "claimed" : row.current ? "current" : "locked";
             const premiumState: "claimed" | "current" | "locked" = row.current ? "current" : "locked";
             return (
               <div key={row.level} style={{ display: "grid", gridTemplateColumns: "32px 1fr 1fr", gap: 10, alignItems: "center", marginBottom: 10, position: "relative" }}>
@@ -371,7 +399,7 @@ export const CompeteScreen = () => {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontFamily: "Archivo Black",
+                      fontFamily: "var(--font-display)",
                       fontSize: 12,
                       color: row.claimed || row.current ? "var(--frame)" : "var(--ink-faint)",
                       boxShadow: row.current ? "0 0 0 4px rgba(255, 201, 49, 0.20)" : undefined,
@@ -380,13 +408,47 @@ export const CompeteScreen = () => {
                     {row.level}
                   </div>
                 </div>
-                <PassRewardCell reward={row.free} state={freeState} />
-                <PassRewardCell reward={row.premium} state={premiumState} premium />
+                <PassRewardCell
+                  reward={row.free}
+                  state={freeState}
+                  onClick={row.current && !freeClaimed ? () => claimFreeReward(row.free) : undefined}
+                />
+                <PassRewardCell
+                  reward={row.premium}
+                  state={premiumState}
+                  premium
+                  onClick={row.current ? () => proto.goto("shop") : undefined}
+                />
               </div>
             );
           })}
         </div>
       </div>
+
+      {toast && (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            left: "50%",
+            bottom: 96,
+            transform: "translateX(-50%)",
+            zIndex: 120,
+            background: "var(--surface-2)",
+            color: "var(--ink)",
+            border: "1px solid rgba(253, 251, 246, 0.14)",
+            borderRadius: 12,
+            padding: "10px 16px",
+            fontSize: 13,
+            fontWeight: 700,
+            boxShadow: "0 10px 28px rgba(0, 0, 0, 0.5)",
+            maxWidth: 280,
+            textAlign: "center",
+          }}
+        >
+          {toast}
+        </div>
+      )}
 
       <div className="bottom-bar">
         <TabBar active="compete" />
